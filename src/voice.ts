@@ -1,0 +1,51 @@
+import { CategoryChannel, ChannelType, VoiceChannel, Interaction } from 'discord.js';
+import { createdChannels, channelOwners, trustedUsers } from './state';
+import { CREATE_CHANNEL_NAME, TEMP_CHANNEL_PREFIX } from './constants';
+
+export function isManager(channelId: string, userId: string): boolean {
+  return (
+    channelOwners.get(channelId) === userId ||
+    trustedUsers.get(channelId)?.has(userId) === true
+  );
+}
+
+export function getUserTempChannel(interaction: Interaction): VoiceChannel | null {
+  const member = interaction.guild?.members.cache.get(interaction.user.id);
+  const channel = member?.voice.channel as VoiceChannel | null | undefined;
+  if (channel && createdChannels.has(channel.id)) {
+    return channel;
+  }
+  return null;
+}
+
+export async function handleVoiceStateUpdate(oldState: any, newState: any) {
+  if (newState.channel && newState.channel.name === CREATE_CHANNEL_NAME) {
+    const category = newState.channel.parent as CategoryChannel | null;
+    const newChannel = (await newState.guild.channels.create({
+      name: `${TEMP_CHANNEL_PREFIX}${newState.member?.displayName ?? 'user'}`,
+      type: ChannelType.GuildVoice,
+      parent: category ?? undefined
+    })) as VoiceChannel;
+    createdChannels.add(newChannel.id);
+    channelOwners.set(newChannel.id, newState.id);
+    trustedUsers.set(newChannel.id, new Set([newState.id]));
+    await newState.setChannel(newChannel);
+  }
+
+  if (oldState.channel && createdChannels.has(oldState.channel.id)) {
+    if (oldState.channel.members.size === 0) {
+      createdChannels.delete(oldState.channel.id);
+      channelOwners.delete(oldState.channel.id);
+      trustedUsers.delete(oldState.channel.id);
+      await oldState.channel.delete();
+    } else {
+      const ownerId = channelOwners.get(oldState.channel.id);
+      if (ownerId === oldState.id) {
+        const [first] = oldState.channel.members.values();
+        if (first) {
+          channelOwners.set(oldState.channel.id, first.id);
+        }
+      }
+    }
+  }
+}
