@@ -12,6 +12,7 @@ import {
   TextInputBuilder,
   TextInputStyle,
   ModalBuilder,
+  UserSelectMenuBuilder,
   AutocompleteInteraction,
   VoiceChannel,
   TextChannel
@@ -358,98 +359,98 @@ export async function handleInteraction(interaction: Interaction) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('invite_modal').setTitle('Пригласить пользователя');
-      const input = new TextInputBuilder()
-        .setCustomId('invite_input')
-        .setLabel('ID пользователя или @')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('invite_select')
+          .setPlaceholder('Выберите пользователя')
+          .setMaxValues(1)
+          .setMinValues(1)
+      );
+      await interaction.reply({ content: 'Выберите пользователя', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'kick_user') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('kick_modal').setTitle('Выгнать пользователя');
-      const input = new TextInputBuilder()
-        .setCustomId('kick_input')
-        .setLabel('ID пользователя или @')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('kick_select')
+          .setPlaceholder('Выберите пользователя')
+          .setMaxValues(1)
+          .setMinValues(1)
+      );
+      await interaction.reply({ content: 'Выберите пользователя', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'block_user') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('block_modal').setTitle('Заблокировать пользователя');
-      const input = new TextInputBuilder()
-        .setCustomId('block_input')
-        .setLabel('ID пользователя или @')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('block_select')
+          .setPlaceholder('Выберите пользователя')
+          .setMaxValues(1)
+          .setMinValues(1)
+      );
+      await interaction.reply({ content: 'Выберите пользователя', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'unblock_user') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('unblock_modal').setTitle('Разблокировать пользователя');
-      const input = new TextInputBuilder()
-        .setCustomId('unblock_input')
-        .setLabel('ID пользователя или @')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('unblock_select')
+          .setPlaceholder('Выберите пользователя')
+          .setMaxValues(1)
+          .setMinValues(1)
+      );
+      await interaction.reply({ content: 'Выберите пользователя', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'add_trusted') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('trusted_add_modal').setTitle('Добавить доверенного');
-      const input = new TextInputBuilder()
-        .setCustomId('trusted_input')
-        .setLabel('ID пользователя или @')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('trusted_add_select')
+          .setPlaceholder('Выберите пользователя')
+          .setMaxValues(1)
+          .setMinValues(1)
+      );
+      await interaction.reply({ content: 'Выберите пользователя', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'remove_trusted') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('trusted_remove_modal').setTitle('Убрать доверенного');
-      const input = new TextInputBuilder()
-        .setCustomId('trusted_input')
-        .setLabel('ID пользователя или @')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('trusted_remove_select')
+          .setPlaceholder('Выберите пользователя')
+          .setMaxValues(1)
+          .setMinValues(1)
+      );
+      await interaction.reply({ content: 'Выберите пользователя', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'transfer_leader') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('transfer_modal').setTitle('Передать лидерство');
-      const input = new TextInputBuilder()
-        .setCustomId('transfer_input')
-        .setLabel('ID пользователя или @')
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
+        new UserSelectMenuBuilder()
+          .setCustomId('transfer_select')
+          .setPlaceholder('Выберите пользователя')
+          .setMaxValues(1)
+          .setMinValues(1)
+      );
+      await interaction.reply({ content: 'Выберите пользователя', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'delete_channel') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
@@ -516,101 +517,94 @@ export async function handleInteraction(interaction: Interaction) {
     }
     await channel.setUserLimit(limit);
     await interaction.editReply({ content: `Лимит установлен: ${limit}` });
-  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'invite_modal') {
-    await interaction.deferReply({ ephemeral: true });
+  } else if (interaction.isUserSelectMenu() && interaction.customId === 'invite_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
+      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
       return;
     }
-    const id = interaction.fields.getTextInputValue('invite_input').replace(/[^0-9]/g, '');
+    const id = interaction.values[0];
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member) {
-      await interaction.editReply({ content: 'Пользователь не найден' });
+      await interaction.reply({ content: 'Пользователь не найден', flags: MessageFlags.Ephemeral });
       return;
     }
     await channel.permissionOverwrites.edit(member, { Connect: true });
-    await interaction.editReply({ content: `Пользователь приглашён: ${member}` });
-  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'kick_modal') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.reply({ content: `Пользователь приглашён: ${member}`, flags: MessageFlags.Ephemeral });
+  } else if (interaction.isUserSelectMenu() && interaction.customId === 'kick_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
+      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
       return;
     }
-    const id = interaction.fields.getTextInputValue('kick_input').replace(/[^0-9]/g, '');
+    const id = interaction.values[0];
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member || member.voice.channelId !== channel.id) {
-      await interaction.editReply({ content: 'Пользователь не найден в канале' });
+      await interaction.reply({ content: 'Пользователь не найден в канале', flags: MessageFlags.Ephemeral });
       return;
     }
     await member.voice.disconnect();
-    await interaction.editReply({ content: `Пользователь выгнан: ${member}` });
-  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'block_modal') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.reply({ content: `Пользователь выгнан: ${member}`, flags: MessageFlags.Ephemeral });
+  } else if (interaction.isUserSelectMenu() && interaction.customId === 'block_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
+      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
       return;
     }
-    const id = interaction.fields.getTextInputValue('block_input').replace(/[^0-9]/g, '');
+    const id = interaction.values[0];
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member) {
-      await interaction.editReply({ content: 'Пользователь не найден' });
+      await interaction.reply({ content: 'Пользователь не найден', flags: MessageFlags.Ephemeral });
       return;
     }
     await channel.permissionOverwrites.edit(member, { Connect: false });
-    await interaction.editReply({ content: `Пользователь заблокирован: ${member}` });
-  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'unblock_modal') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.reply({ content: `Пользователь заблокирован: ${member}`, flags: MessageFlags.Ephemeral });
+  } else if (interaction.isUserSelectMenu() && interaction.customId === 'unblock_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
+      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
       return;
     }
-    const id = interaction.fields.getTextInputValue('unblock_input').replace(/[^0-9]/g, '');
+    const id = interaction.values[0];
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member) {
-      await interaction.editReply({ content: 'Пользователь не найден' });
+      await interaction.reply({ content: 'Пользователь не найден', flags: MessageFlags.Ephemeral });
       return;
     }
     await channel.permissionOverwrites.delete(member);
-    await interaction.editReply({ content: `Пользователь разблокирован: ${member}` });
-  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'trusted_add_modal') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.reply({ content: `Пользователь разблокирован: ${member}`, flags: MessageFlags.Ephemeral });
+  } else if (interaction.isUserSelectMenu() && interaction.customId === 'trusted_add_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
+      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
       return;
     }
-    const id = interaction.fields.getTextInputValue('trusted_input').replace(/[^0-9]/g, '');
+    const id = interaction.values[0];
     const set = trustedUsers.get(channel.id) ?? new Set();
     set.add(id);
     trustedUsers.set(channel.id, set);
-    await interaction.editReply({ content: 'Доверенный пользователь добавлен' });
-  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'trusted_remove_modal') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.reply({ content: 'Доверенный пользователь добавлен', flags: MessageFlags.Ephemeral });
+  } else if (interaction.isUserSelectMenu() && interaction.customId === 'trusted_remove_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
+      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
       return;
     }
-    const id = interaction.fields.getTextInputValue('trusted_input').replace(/[^0-9]/g, '');
+    const id = interaction.values[0];
     trustedUsers.get(channel.id)?.delete(id);
-    await interaction.editReply({ content: 'Доверенный пользователь удалён' });
-  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'transfer_modal') {
-    await interaction.deferReply({ ephemeral: true });
+    await interaction.reply({ content: 'Доверенный пользователь удалён', flags: MessageFlags.Ephemeral });
+  } else if (interaction.isUserSelectMenu() && interaction.customId === 'transfer_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
+      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
       return;
     }
-    const id = interaction.fields.getTextInputValue('transfer_input').replace(/[^0-9]/g, '');
+    const id = interaction.values[0];
     channelOwners.set(channel.id, id);
     const set = trustedUsers.get(channel.id) ?? new Set();
     set.add(id);
     trustedUsers.set(channel.id, set);
-    await interaction.editReply({ content: 'Лидерство передано' });
+    await interaction.reply({ content: 'Лидерство передано', flags: MessageFlags.Ephemeral });
   }
 
 }
