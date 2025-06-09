@@ -479,11 +479,11 @@ export async function handleInteraction(interaction: Interaction) {
       flags: MessageFlags.Ephemeral
     });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'rename_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({
-        content: 'Вы должны находиться в своём временном канале',
-        flags: MessageFlags.Ephemeral
+      await interaction.editReply({
+        content: 'Вы должны находиться в своём временном канале'
       });
       return;
     }
@@ -493,100 +493,108 @@ export async function handleInteraction(interaction: Interaction) {
     const overwrite = channel.permissionOverwrites.resolve(everyone.id);
     const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
     await channel.setName(formatChannelName(channel.id, isPrivate));
-    await interaction.reply({ content: `Название канала изменено на ${name}`, flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: `Название канала изменено на ${name}` });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'limit_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const limit = parseInt(interaction.fields.getTextInputValue('limit_input'), 10);
     if (isNaN(limit) || limit < 0 || limit > 99) {
-      await interaction.reply({ content: 'Неверное значение', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Неверное значение' });
       return;
     }
     await channel.setUserLimit(limit);
-    await interaction.reply({ content: `Лимит установлен: ${limit}`, flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: `Лимит установлен: ${limit}` });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'invite_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const id = interaction.fields.getTextInputValue('invite_input').replace(/[^0-9]/g, '');
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member) {
-      await interaction.reply({ content: 'Пользователь не найден', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Пользователь не найден' });
       return;
     }
     await channel.permissionOverwrites.edit(member, { Connect: true });
-    await interaction.reply({ content: `Пользователь приглашён: ${member}`, flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: `Пользователь приглашён: ${member}` });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'kick_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const id = interaction.fields.getTextInputValue('kick_input').replace(/[^0-9]/g, '');
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member || member.voice.channelId !== channel.id) {
-      await interaction.reply({ content: 'Пользователь не найден в канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Пользователь не найден в канале' });
       return;
     }
     await member.voice.disconnect();
-    await interaction.reply({ content: `Пользователь выгнан: ${member}`, flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: `Пользователь выгнан: ${member}` });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'block_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const id = interaction.fields.getTextInputValue('block_input').replace(/[^0-9]/g, '');
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member) {
-      await interaction.reply({ content: 'Пользователь не найден', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Пользователь не найден' });
       return;
     }
     await channel.permissionOverwrites.edit(member, { Connect: false });
-    await interaction.reply({ content: `Пользователь заблокирован: ${member}`, flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: `Пользователь заблокирован: ${member}` });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'unblock_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const id = interaction.fields.getTextInputValue('unblock_input').replace(/[^0-9]/g, '');
     const member = await interaction.guild?.members.fetch(id).catch(() => null);
     if (!member) {
-      await interaction.reply({ content: 'Пользователь не найден', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Пользователь не найден' });
       return;
     }
     await channel.permissionOverwrites.delete(member);
-    await interaction.reply({ content: `Пользователь разблокирован: ${member}`, flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: `Пользователь разблокирован: ${member}` });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'trusted_add_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const id = interaction.fields.getTextInputValue('trusted_input').replace(/[^0-9]/g, '');
     const set = trustedUsers.get(channel.id) ?? new Set();
     set.add(id);
     trustedUsers.set(channel.id, set);
-    await interaction.reply({ content: 'Доверенный пользователь добавлен', flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: 'Доверенный пользователь добавлен' });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'trusted_remove_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const id = interaction.fields.getTextInputValue('trusted_input').replace(/[^0-9]/g, '');
     trustedUsers.get(channel.id)?.delete(id);
-    await interaction.reply({ content: 'Доверенный пользователь удалён', flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: 'Доверенный пользователь удалён' });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'transfer_modal') {
+    await interaction.deferReply({ ephemeral: true });
     const channel = getUserTempChannel(interaction);
     if (!channel) {
-      await interaction.reply({ content: 'Вы должны находиться в своём временном канале', flags: MessageFlags.Ephemeral });
+      await interaction.editReply({ content: 'Вы должны находиться в своём временном канале' });
       return;
     }
     const id = interaction.fields.getTextInputValue('transfer_input').replace(/[^0-9]/g, '');
@@ -594,7 +602,7 @@ export async function handleInteraction(interaction: Interaction) {
     const set = trustedUsers.get(channel.id) ?? new Set();
     set.add(id);
     trustedUsers.set(channel.id, set);
-    await interaction.reply({ content: 'Лидерство передано', flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: 'Лидерство передано' });
   }
 
 }
