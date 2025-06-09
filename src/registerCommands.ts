@@ -45,8 +45,9 @@ export async function registerCommands(client: Client): Promise<void> {
             required: true,
             choices: [
               { name: 'Авто', value: 'auto' },
-              { name: 'Европа', value: 'rotterdam' },
-              { name: 'Сингапур', value: 'singapore' }
+              { name: 'Вротдам', value: 'rotterdam' },
+              { name: 'Сингапур', value: 'singapore' },
+              { name: 'Токио-Дрифт', value: 'japan' }
             ]
           }
         ]

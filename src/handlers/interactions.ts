@@ -402,8 +402,9 @@ export async function handleInteraction(interaction: Interaction) {
           .setPlaceholder('Выберите регион')
           .addOptions(
             { label: 'Авто', value: 'auto' },
-            { label: 'Европа', value: 'rotterdam' },
-            { label: 'Сингапур', value: 'singapore' }
+            { label: 'Вротдам', value: 'rotterdam' },
+            { label: 'Сингапур', value: 'singapore' },
+            { label: 'Токио-Дрифт', value: 'japan' }
           )
       );
       await interaction.reply({ content: 'Выберите регион', components: [menu], flags: MessageFlags.Ephemeral });
