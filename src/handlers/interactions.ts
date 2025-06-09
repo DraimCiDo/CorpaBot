@@ -211,7 +211,7 @@ export async function handleInteraction(interaction: Interaction) {
       channelNames.set(channel.id, name);
       const everyone = interaction.guild!.roles.everyone;
       const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-      const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+      const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
       await channel.setName(formatChannelName(channel.id, isPrivate));
       await interaction.reply({ content: `Название канала изменено на ${name}`, flags: MessageFlags.Ephemeral });
     } else if (sub === 'limit') {
@@ -491,7 +491,7 @@ export async function handleInteraction(interaction: Interaction) {
     channelNames.set(channel.id, name);
     const everyone = interaction.guild!.roles.everyone;
     const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-    const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+    const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
     await channel.setName(formatChannelName(channel.id, isPrivate));
     await interaction.reply({ content: `Название канала изменено на ${name}`, flags: MessageFlags.Ephemeral });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'limit_modal') {
