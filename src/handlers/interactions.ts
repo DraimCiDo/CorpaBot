@@ -16,8 +16,14 @@ import {
   VoiceChannel,
   TextChannel
 } from "discord.js";
-import { CREATE_CHANNEL_NAME, INTERFACE_CHANNEL_NAME } from "../constants";
-import { createdChannels, channelOwners, trustedUsers } from "../state";
+import {
+  CREATE_CHANNEL_NAME,
+  INTERFACE_CHANNEL_NAME,
+  TEMP_CHANNEL_PREFIX,
+  LOCK_OPEN,
+  LOCK_CLOSED
+} from "../constants";
+import { createdChannels, channelOwners, trustedUsers, channelNumbers } from "../state";
 import { isManager, getUserTempChannel } from "../voice";
 
 export async function handleInteraction(interaction: Interaction) {
@@ -165,16 +171,21 @@ export async function handleInteraction(interaction: Interaction) {
       return;
     }
     if (sub === 'privacy') {
-      const everyone = interaction.guild!.roles.everyone;
-      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-      const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
-      await channel.permissionOverwrites.edit(everyone, {
-        Connect: isPrivate ? null : false
-      });
-      await interaction.reply({
-        content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
-        flags: MessageFlags.Ephemeral
-      });
+    const everyone = interaction.guild!.roles.everyone;
+    const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+    const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+    await channel.permissionOverwrites.edit(everyone, {
+      Connect: isPrivate ? null : false
+    });
+    const number = channelNumbers.get(channel.id);
+    if (number !== undefined) {
+      const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
+      await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
+    }
+    await interaction.reply({
+      content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
+      flags: MessageFlags.Ephemeral
+    });
     } else if (sub === 'rename') {
       const name = interaction.options.getString('name', true);
       await channel.setName(name);
@@ -256,10 +267,15 @@ export async function handleInteraction(interaction: Interaction) {
       await channel.permissionOverwrites.edit(everyone, {
         Connect: isPrivate ? null : false
       });
-    await interaction.reply({
-      content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
-      flags: MessageFlags.Ephemeral
-    });
+      const number = channelNumbers.get(channel.id);
+      if (number !== undefined) {
+        const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
+        await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
+      }
+      await interaction.reply({
+        content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
+        flags: MessageFlags.Ephemeral
+      });
     } else if (interaction.customId === 'rename') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
