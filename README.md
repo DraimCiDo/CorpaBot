@@ -11,10 +11,13 @@
 
 1. Установите зависимости:
    ```bash
-   pip install -r requirements.txt
+   npm install
    ```
-2. Укажите токен бота в переменной окружения `DISCORD_TOKEN`.
-3. Запустите скрипт:
+2. Укажите токен бота в файле `.env` или переменной окружения `DISCORD_TOKEN`.
+3. Скомпилируйте TypeScript и запустите бота:
    ```bash
-   python bot.py
+   npm run build
+   npm start
    ```
+
+Для разработки можно использовать команду `npm run dev`, которая запускает бота через `ts-node`.
