@@ -6,6 +6,7 @@ export const LOCK_CLOSED = '🔒';
 export const ICON_PRIVACY = '🔒';
 export const ICON_RENAME = '✏️';
 export const ICON_LIMIT = '🔢';
+export const ICON_REGION = '🌐';
 export const ICON_DELETE = '🗑️';
 export const ICON_INVITE = '➕';
 export const ICON_KICK = '🚪';

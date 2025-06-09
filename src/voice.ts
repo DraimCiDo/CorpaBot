@@ -52,7 +52,11 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
       channelOwners.delete(oldState.channel.id);
       trustedUsers.delete(oldState.channel.id);
       channelNumbers.delete(oldState.channel.id);
-      await oldState.channel.delete();
+      try {
+        await oldState.channel.delete();
+      } catch {
+        // channel might already be deleted
+      }
     } else {
       const ownerId = channelOwners.get(oldState.channel.id);
       if (ownerId === oldState.id) {

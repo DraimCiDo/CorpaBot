@@ -25,6 +25,7 @@ import {
   ICON_PRIVACY,
   ICON_RENAME,
   ICON_LIMIT,
+  ICON_REGION,
   ICON_DELETE,
   ICON_INVITE,
   ICON_KICK,
@@ -112,7 +113,10 @@ export async function handleInteraction(interaction: Interaction) {
       .setTitle('Настройка временного канала')
       .setColor(0x00ff00)
       .setDescription(
-        `Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.\n${legend}`
+        'Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.'
+      )
+      .setImage(
+        'https://media.discordapp.net/attachments/1148739831594242211/1381698240948338799/canvas.png?ex=68487643&is=684724c3&hm=b490c306b37596382b60d430c1ba8b73d1bb08ac39957d91d1116a884b4c991f&=&format=webp&quality=lossless&width=1269&height=209'
       );
 
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -129,20 +133,13 @@ export async function handleInteraction(interaction: Interaction) {
       .setEmoji(ICON_LIMIT)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
+      .setCustomId('change_region')
+      .setEmoji(ICON_REGION)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
       .setCustomId('delete_channel')
       .setEmoji(ICON_DELETE)
       .setStyle(ButtonStyle.Danger)
-  );
-
-  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('region')
-      .setPlaceholder('Выберите регион')
-      .addOptions(
-        { label: 'Авто', value: 'auto' },
-        { label: 'Европа', value: 'rotterdam' },
-        { label: 'Сингапур', value: 'singapore' }
-      )
   );
 
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -179,7 +176,7 @@ export async function handleInteraction(interaction: Interaction) {
       .setStyle(ButtonStyle.Secondary)
   );
 
-  await interfaceChannel.send({ embeds: [embed], components: [row1, row2, row3, row4] });
+  await interfaceChannel.send({ embeds: [embed], components: [row1, row3, row4] });
 
     await interaction.reply({ content: `Создан канал ${channel} и ${interfaceChannel}`, flags: MessageFlags.Ephemeral });
   } else if (interaction.isChatInputCommand() && interaction.commandName === 'voice') {
@@ -229,6 +226,7 @@ export async function handleInteraction(interaction: Interaction) {
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
+      channelNumbers.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });
     } else if (sub === 'region') {
       const value = interaction.options.getString('region', true);
@@ -324,7 +322,7 @@ export async function handleInteraction(interaction: Interaction) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('limit_modal').setTitle('Лимит пользователей');
+    const modal = new ModalBuilder().setCustomId('limit_modal').setTitle('Лимит пользователей');
 
       const input = new TextInputBuilder()
         .setCustomId('limit_input')
@@ -332,8 +330,25 @@ export async function handleInteraction(interaction: Interaction) {
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+    modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+    await interaction.showModal(modal);
+    } else if (interaction.customId === 'change_region') {
+      const channel = getUserTempChannel(interaction);
+      if (!channel || !isManager(channel.id, interaction.user.id)) {
+        await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const menu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('region_select')
+          .setPlaceholder('Выберите регион')
+          .addOptions(
+            { label: 'Авто', value: 'auto' },
+            { label: 'Европа', value: 'rotterdam' },
+            { label: 'Сингапур', value: 'singapore' }
+          )
+      );
+      await interaction.reply({ content: 'Выберите регион', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'invite_user') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
@@ -445,9 +460,10 @@ export async function handleInteraction(interaction: Interaction) {
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
+      channelNumbers.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });
     }
-  } else if (interaction.isStringSelectMenu() && interaction.customId === 'region') {
+  } else if (interaction.isStringSelectMenu() && interaction.customId === 'region_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
       await interaction.reply({
