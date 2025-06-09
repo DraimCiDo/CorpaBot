@@ -15,11 +15,13 @@ import {
   UserSelectMenuBuilder,
   AutocompleteInteraction,
   VoiceChannel,
-  TextChannel
+  TextChannel,
+  CategoryChannel
 } from "discord.js";
 import {
   CREATE_CHANNEL_NAME,
   INTERFACE_CHANNEL_NAME,
+  VOICE_CATEGORY_NAME,
   TEMP_CHANNEL_PREFIX,
   LOCK_OPEN,
   LOCK_CLOSED,
@@ -39,86 +41,30 @@ import {
 import { createdChannels, channelOwners, trustedUsers, channelNumbers, channelNames, availableNumbers } from "../state";
 import { isManager, getUserTempChannel, formatChannelName } from "../voice";
 
-export async function handleInteraction(interaction: Interaction) {
-  if (interaction.isAutocomplete() && interaction.commandName === 'voice') {
-    const focused = interaction.options.getFocused(true);
-    if (focused.name === 'user') {
-      const channel = getUserTempChannel(interaction as AutocompleteInteraction);
-      const members = channel ? [...channel.members.values()] : [];
-      await interaction.respond(
-        members.slice(0, 25).map(m => ({ name: m.displayName, value: m.id }))
-      );
-    } else {
-      await interaction.respond([]);
-    }
-    return;
-  }
-  if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
-    if (!interaction.guild) {
-      await interaction.reply({
-        content: 'Эту команду можно использовать только на сервере',
-        flags: MessageFlags.Ephemeral
-      });
-      return;
-    }
+async function sendInterfaceMessage(interfaceChannel: TextChannel) {
+  const legend = [
+    `${ICON_PRIVACY} приватность`,
+    `${ICON_RENAME} имя`,
+    `${ICON_LIMIT} лимит`,
+    `${ICON_DELETE} удалить`,
+    `${ICON_INVITE} пригласить`,
+    `${ICON_KICK} выгнать`,
+    `${ICON_BLOCK} блок`,
+    `${ICON_UNBLOCK} разблок`,
+    `${ICON_TRUSTED_ADD} доверенный`,
+    `${ICON_TRUSTED_REMOVE} убрать доверенного`,
+    `${ICON_TRANSFER} лидер`
+  ].join(' | ');
 
-    const memberPerms = interaction.memberPermissions;
-    if (!memberPerms || !memberPerms.has(PermissionFlagsBits.ManageChannels)) {
-      await interaction.reply({
-        content: 'Недостаточно прав для выполнения команды',
-        flags: MessageFlags.Ephemeral
-      });
-      return;
-    }
-
-    const existing = interaction.guild.channels.cache.find(
-      c => c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
-    ) as VoiceChannel | undefined;
-
-    const existingInterface = interaction.guild.channels.cache.find(
-      c => c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+  const embed = new EmbedBuilder()
+    .setTitle('Настройка временного канала')
+    .setColor(0x00ff00)
+    .setDescription(
+      'Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.'
+    )
+    .setImage(
+      'https://media.discordapp.net/attachments/1148739831594242211/1381739268199809075/canvas.png?ex=68489c79&is=68474af9&hm=c994068cd595347918981b087c45223cc67ac5343a7d9c79d7bf680cfe81edcc&=&format=webp&quality=lossless&width=1269&height=209'
     );
-
-    if (existing) {
-      await interaction.reply({ content: `Канал уже существует: ${existing}`, flags: MessageFlags.Ephemeral });
-      return;
-    }
-
-    const interfaceChannel = existingInterface
-      ? (existingInterface as TextChannel)
-      : ((await interaction.guild.channels.create({
-          name: INTERFACE_CHANNEL_NAME,
-          type: ChannelType.GuildText
-        })) as TextChannel);
-
-    const channel = await interaction.guild.channels.create({
-      name: CREATE_CHANNEL_NAME,
-      type: ChannelType.GuildVoice
-    });
-
-    const legend = [
-      `${ICON_PRIVACY} приватность`,
-      `${ICON_RENAME} имя`,
-      `${ICON_LIMIT} лимит`,
-      `${ICON_DELETE} удалить`,
-      `${ICON_INVITE} пригласить`,
-      `${ICON_KICK} выгнать`,
-      `${ICON_BLOCK} блок`,
-      `${ICON_UNBLOCK} разблок`,
-      `${ICON_TRUSTED_ADD} доверенный`,
-      `${ICON_TRUSTED_REMOVE} убрать доверенного`,
-      `${ICON_TRANSFER} лидер`
-    ].join(' | ');
-
-    const embed = new EmbedBuilder()
-      .setTitle('Настройка временного канала')
-      .setColor(0x00ff00)
-      .setDescription(
-        'Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.'
-      )
-      .setImage(
-        'https://media.discordapp.net/attachments/1148739831594242211/1381739268199809075/canvas.png?ex=68489c79&is=68474af9&hm=c994068cd595347918981b087c45223cc67ac5343a7d9c79d7bf680cfe81edcc&=&format=webp&quality=lossless&width=1269&height=209'
-      );
 
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -178,8 +124,116 @@ export async function handleInteraction(interaction: Interaction) {
   );
 
   await interfaceChannel.send({ embeds: [embed], components: [row1, row3, row4] });
+}
+
+export async function handleInteraction(interaction: Interaction) {
+  if (interaction.isAutocomplete() && interaction.commandName === 'voice') {
+    const focused = interaction.options.getFocused(true);
+    if (focused.name === 'user') {
+      const channel = getUserTempChannel(interaction as AutocompleteInteraction);
+      const members = channel ? [...channel.members.values()] : [];
+      await interaction.respond(
+        members.slice(0, 25).map(m => ({ name: m.displayName, value: m.id }))
+      );
+    } else {
+      await interaction.respond([]);
+    }
+    return;
+  }
+  if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
+    if (!interaction.guild) {
+      await interaction.reply({
+        content: 'Эту команду можно использовать только на сервере',
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const memberPerms = interaction.memberPermissions;
+    if (!memberPerms || !memberPerms.has(PermissionFlagsBits.ManageChannels)) {
+      await interaction.reply({
+        content: 'Недостаточно прав для выполнения команды',
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const existing = interaction.guild.channels.cache.find(
+      (c: any) => c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
+    ) as VoiceChannel | undefined;
+
+    const existingInterface = interaction.guild.channels.cache.find(
+      (c: any) => c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+    );
+
+    const existingCategory = interaction.guild.channels.cache.find(
+      (c: any) => c.name === VOICE_CATEGORY_NAME && c.type === ChannelType.GuildCategory
+    );
+
+    if (existing) {
+      await interaction.reply({ content: `Канал уже существует: ${existing}`, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    const category = existingCategory
+      ? (existingCategory as CategoryChannel)
+      : await interaction.guild.channels.create({
+          name: VOICE_CATEGORY_NAME,
+          type: ChannelType.GuildCategory
+        });
+
+    const interfaceChannel = existingInterface
+      ? (existingInterface as TextChannel)
+      : ((await interaction.guild.channels.create({
+          name: INTERFACE_CHANNEL_NAME,
+          type: ChannelType.GuildText,
+          parent: category.id
+        })) as TextChannel);
+
+    if (existingInterface && existingInterface.parentId !== category.id) {
+      await (existingInterface as TextChannel).setParent(category.id);
+    }
+
+    const channel = await interaction.guild.channels.create({
+      name: CREATE_CHANNEL_NAME,
+      type: ChannelType.GuildVoice,
+      parent: category.id
+    });
+
+
+
+    await sendInterfaceMessage(interfaceChannel);
 
     await interaction.reply({ content: `Создан канал ${channel} и ${interfaceChannel}`, flags: MessageFlags.Ephemeral });
+  } else if (interaction.isChatInputCommand() && interaction.commandName === 'interface') {
+    if (!interaction.guild) {
+      await interaction.reply({
+        content: 'Эту команду можно использовать только на сервере',
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const memberPerms = interaction.memberPermissions;
+    if (!memberPerms || !memberPerms.has(PermissionFlagsBits.ManageChannels)) {
+      await interaction.reply({
+        content: 'Недостаточно прав для выполнения команды',
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+
+    const interfaceChannel = interaction.guild.channels.cache.find(
+      (c: any) => c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+    ) as TextChannel | undefined;
+
+    if (!interfaceChannel) {
+      await interaction.reply({ content: 'Канал Интерфейс не найден', flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await sendInterfaceMessage(interfaceChannel);
+    await interaction.reply({ content: 'Сообщение обновлено', flags: MessageFlags.Ephemeral });
   } else if (interaction.isChatInputCommand() && interaction.commandName === 'voice') {
     const sub = interaction.options.getSubcommand();
     const channel = getUserTempChannel(interaction);

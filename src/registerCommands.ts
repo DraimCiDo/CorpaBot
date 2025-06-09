@@ -7,6 +7,11 @@ export async function registerCommands(client: Client): Promise<void> {
   });
 
   await client.application?.commands.create({
+    name: 'interface',
+    description: 'Обновляет сообщение в канале Интерфейс'
+  });
+
+  await client.application?.commands.create({
     name: 'voice',
     description: 'Управление временным голосовым каналом',
     options: [
