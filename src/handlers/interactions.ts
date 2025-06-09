@@ -116,7 +116,7 @@ export async function handleInteraction(interaction: Interaction) {
         'Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.'
       )
       .setImage(
-        'https://media.discordapp.net/attachments/1148739831594242211/1381698240948338799/canvas.png?ex=68487643&is=684724c3&hm=b490c306b37596382b60d430c1ba8b73d1bb08ac39957d91d1116a884b4c991f&=&format=webp&quality=lossless&width=1269&height=209'
+        'https://media.discordapp.net/attachments/1148739831594242211/1381739268199809075/canvas.png?ex=68489c79&is=68474af9&hm=c994068cd595347918981b087c45223cc67ac5343a7d9c79d7bf680cfe81edcc&=&format=webp&quality=lossless&width=1269&height=209'
       );
 
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
