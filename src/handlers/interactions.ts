@@ -95,6 +95,20 @@ export async function handleInteraction(interaction: Interaction) {
       type: ChannelType.GuildVoice
     });
 
+    const legend = [
+      `${ICON_PRIVACY} приватность`,
+      `${ICON_RENAME} имя`,
+      `${ICON_LIMIT} лимит`,
+      `${ICON_DELETE} удалить`,
+      `${ICON_INVITE} пригласить`,
+      `${ICON_KICK} выгнать`,
+      `${ICON_BLOCK} блок`,
+      `${ICON_UNBLOCK} разблок`,
+      `${ICON_TRUSTED_ADD} доверенный`,
+      `${ICON_TRUSTED_REMOVE} убрать доверенного`,
+      `${ICON_TRANSFER} лидер`
+    ].join(' | ');
+
     const embed = new EmbedBuilder()
       .setTitle('Настройка временного канала')
       .setColor(0x00ff00)
