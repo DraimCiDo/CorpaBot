@@ -1,6 +1,18 @@
 import { CategoryChannel, ChannelType, VoiceChannel, Interaction } from 'discord.js';
-import { createdChannels, channelOwners, trustedUsers } from './state';
-import { CREATE_CHANNEL_NAME, TEMP_CHANNEL_PREFIX } from './constants';
+import {
+  createdChannels,
+  channelOwners,
+  trustedUsers,
+  channelNumbers
+} from './state';
+import {
+  CREATE_CHANNEL_NAME,
+  TEMP_CHANNEL_PREFIX,
+  LOCK_OPEN,
+  LOCK_CLOSED
+} from './constants';
+
+let channelCounter = 0;
 
 export function isManager(channelId: string, userId: string): boolean {
   return (
@@ -21,14 +33,16 @@ export function getUserTempChannel(interaction: Interaction): VoiceChannel | nul
 export async function handleVoiceStateUpdate(oldState: any, newState: any) {
   if (newState.channel && newState.channel.name === CREATE_CHANNEL_NAME) {
     const category = newState.channel.parent as CategoryChannel | null;
+    const number = ++channelCounter;
     const newChannel = (await newState.guild.channels.create({
-      name: `${TEMP_CHANNEL_PREFIX}${newState.member?.displayName ?? 'user'}`,
+      name: `[${LOCK_OPEN}] ${TEMP_CHANNEL_PREFIX}[#${number}]`,
       type: ChannelType.GuildVoice,
       parent: category ?? undefined
     })) as VoiceChannel;
     createdChannels.add(newChannel.id);
     channelOwners.set(newChannel.id, newState.id);
     trustedUsers.set(newChannel.id, new Set([newState.id]));
+    channelNumbers.set(newChannel.id, number);
     await newState.setChannel(newChannel);
   }
 
@@ -37,7 +51,12 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
       createdChannels.delete(oldState.channel.id);
       channelOwners.delete(oldState.channel.id);
       trustedUsers.delete(oldState.channel.id);
-      await oldState.channel.delete();
+      channelNumbers.delete(oldState.channel.id);
+      try {
+        await oldState.channel.delete();
+      } catch {
+        // channel might already be deleted
+      }
     } else {
       const ownerId = channelOwners.get(oldState.channel.id);
       if (ownerId === oldState.id) {

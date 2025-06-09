@@ -16,8 +16,26 @@ import {
   VoiceChannel,
   TextChannel
 } from "discord.js";
-import { CREATE_CHANNEL_NAME, INTERFACE_CHANNEL_NAME } from "../constants";
-import { createdChannels, channelOwners, trustedUsers } from "../state";
+import {
+  CREATE_CHANNEL_NAME,
+  INTERFACE_CHANNEL_NAME,
+  TEMP_CHANNEL_PREFIX,
+  LOCK_OPEN,
+  LOCK_CLOSED,
+  ICON_PRIVACY,
+  ICON_RENAME,
+  ICON_LIMIT,
+  ICON_REGION,
+  ICON_DELETE,
+  ICON_INVITE,
+  ICON_KICK,
+  ICON_BLOCK,
+  ICON_UNBLOCK,
+  ICON_TRUSTED_ADD,
+  ICON_TRUSTED_REMOVE,
+  ICON_TRANSFER
+} from "../constants";
+import { createdChannels, channelOwners, trustedUsers, channelNumbers } from "../state";
 import { isManager, getUserTempChannel } from "../voice";
 
 export async function handleInteraction(interaction: Interaction) {
@@ -79,75 +97,72 @@ export async function handleInteraction(interaction: Interaction) {
 
     const embed = new EmbedBuilder()
       .setTitle('Настройка временного канала')
+      .setColor(0x00ff00)
       .setDescription(
         'Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.'
+      )
+      .setImage(
+        'https://media.discordapp.net/attachments/1148739831594242211/1381698240948338799/canvas.png?ex=68487643&is=684724c3&hm=b490c306b37596382b60d430c1ba8b73d1bb08ac39957d91d1116a884b4c991f&=&format=webp&quality=lossless&width=1269&height=209'
       );
 
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId('toggle_privacy')
-      .setLabel('Приватность')
+      .setEmoji(ICON_PRIVACY)
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('rename')
-      .setLabel('Переименовать')
+      .setEmoji(ICON_RENAME)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('set_limit')
-      .setLabel('Лимит')
+      .setEmoji(ICON_LIMIT)
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId('change_region')
+      .setEmoji(ICON_REGION)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('delete_channel')
-      .setLabel('Удалить')
+      .setEmoji(ICON_DELETE)
       .setStyle(ButtonStyle.Danger)
-  );
-
-  const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId('region')
-      .setPlaceholder('Выберите регион')
-      .addOptions(
-        { label: 'Авто', value: 'auto' },
-        { label: 'Европа', value: 'rotterdam' },
-        { label: 'Сингапур', value: 'singapore' }
-      )
   );
 
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId('invite_user')
-      .setLabel('Пригласить')
+      .setEmoji(ICON_INVITE)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('kick_user')
-      .setLabel('Выгнать')
+      .setEmoji(ICON_KICK)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('block_user')
-      .setLabel('Заблокировать')
+      .setEmoji(ICON_BLOCK)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('unblock_user')
-      .setLabel('Разблокировать')
+      .setEmoji(ICON_UNBLOCK)
       .setStyle(ButtonStyle.Secondary)
   );
 
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId('add_trusted')
-      .setLabel('Доверенный')
+      .setEmoji(ICON_TRUSTED_ADD)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('remove_trusted')
-      .setLabel('Убрать доверенного')
+      .setEmoji(ICON_TRUSTED_REMOVE)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('transfer_leader')
-      .setLabel('Передать лидера')
+      .setEmoji(ICON_TRANSFER)
       .setStyle(ButtonStyle.Secondary)
   );
 
-  await interfaceChannel.send({ embeds: [embed], components: [row1, row2, row3, row4] });
+  await interfaceChannel.send({ embeds: [embed], components: [row1, row3, row4] });
 
     await interaction.reply({ content: `Создан канал ${channel} и ${interfaceChannel}`, flags: MessageFlags.Ephemeral });
   } else if (interaction.isChatInputCommand() && interaction.commandName === 'voice') {
@@ -165,16 +180,21 @@ export async function handleInteraction(interaction: Interaction) {
       return;
     }
     if (sub === 'privacy') {
-      const everyone = interaction.guild!.roles.everyone;
-      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-      const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
-      await channel.permissionOverwrites.edit(everyone, {
-        Connect: isPrivate ? null : false
-      });
-      await interaction.reply({
-        content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
-        flags: MessageFlags.Ephemeral
-      });
+    const everyone = interaction.guild!.roles.everyone;
+    const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+    const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+    await channel.permissionOverwrites.edit(everyone, {
+      Connect: isPrivate ? null : false
+    });
+    const number = channelNumbers.get(channel.id);
+    if (number !== undefined) {
+      const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
+      await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
+    }
+    await interaction.reply({
+      content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
+      flags: MessageFlags.Ephemeral
+    });
     } else if (sub === 'rename') {
       const name = interaction.options.getString('name', true);
       await channel.setName(name);
@@ -192,6 +212,7 @@ export async function handleInteraction(interaction: Interaction) {
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
+      channelNumbers.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });
     } else if (sub === 'region') {
       const value = interaction.options.getString('region', true);
@@ -256,10 +277,15 @@ export async function handleInteraction(interaction: Interaction) {
       await channel.permissionOverwrites.edit(everyone, {
         Connect: isPrivate ? null : false
       });
-    await interaction.reply({
-      content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
-      flags: MessageFlags.Ephemeral
-    });
+      const number = channelNumbers.get(channel.id);
+      if (number !== undefined) {
+        const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
+        await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
+      }
+      await interaction.reply({
+        content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
+        flags: MessageFlags.Ephemeral
+      });
     } else if (interaction.customId === 'rename') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
@@ -282,7 +308,7 @@ export async function handleInteraction(interaction: Interaction) {
         await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
         return;
       }
-      const modal = new ModalBuilder().setCustomId('limit_modal').setTitle('Лимит пользователей');
+    const modal = new ModalBuilder().setCustomId('limit_modal').setTitle('Лимит пользователей');
 
       const input = new TextInputBuilder()
         .setCustomId('limit_input')
@@ -290,8 +316,25 @@ export async function handleInteraction(interaction: Interaction) {
         .setStyle(TextInputStyle.Short)
         .setRequired(true);
 
-      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
-      await interaction.showModal(modal);
+    modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+    await interaction.showModal(modal);
+    } else if (interaction.customId === 'change_region') {
+      const channel = getUserTempChannel(interaction);
+      if (!channel || !isManager(channel.id, interaction.user.id)) {
+        await interaction.reply({ content: 'Недостаточно прав', flags: MessageFlags.Ephemeral });
+        return;
+      }
+      const menu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId('region_select')
+          .setPlaceholder('Выберите регион')
+          .addOptions(
+            { label: 'Авто', value: 'auto' },
+            { label: 'Европа', value: 'rotterdam' },
+            { label: 'Сингапур', value: 'singapore' }
+          )
+      );
+      await interaction.reply({ content: 'Выберите регион', components: [menu], flags: MessageFlags.Ephemeral });
     } else if (interaction.customId === 'invite_user') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {
@@ -403,9 +446,10 @@ export async function handleInteraction(interaction: Interaction) {
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
+      channelNumbers.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });
     }
-  } else if (interaction.isStringSelectMenu() && interaction.customId === 'region') {
+  } else if (interaction.isStringSelectMenu() && interaction.customId === 'region_select') {
     const channel = getUserTempChannel(interaction);
     if (!channel) {
       await interaction.reply({
