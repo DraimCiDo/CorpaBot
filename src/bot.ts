@@ -1,4 +1,11 @@
-import { Client, GatewayIntentBits, VoiceChannel, CategoryChannel } from 'discord.js';
+import {
+  Client,
+  GatewayIntentBits,
+  VoiceChannel,
+  CategoryChannel,
+  ChannelType,
+  PermissionFlagsBits
+} from 'discord.js';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -15,7 +22,54 @@ const client = new Client({
   intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildVoiceStates]
 });
 
+client.once('ready', async () => {
+  // Register the /setup slash command when the bot starts
+  await client.application?.commands.create({
+    name: 'setup',
+    description: 'Создает канал для управления временными каналами'
+  });
+  console.log('Bot ready');
+});
+
 const createdChannels = new Set<string>();
+
+client.on('interactionCreate', async interaction => {
+  if (!interaction.isChatInputCommand()) return;
+  if (interaction.commandName === 'setup') {
+    if (!interaction.guild) {
+      await interaction.reply({
+        content: 'Эту команду можно использовать только на сервере',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const memberPerms = interaction.memberPermissions;
+    if (!memberPerms || !memberPerms.has(PermissionFlagsBits.ManageChannels)) {
+      await interaction.reply({
+        content: 'Недостаточно прав для выполнения команды',
+        ephemeral: true
+      });
+      return;
+    }
+
+    const existing = interaction.guild.channels.cache.find(
+      c => c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
+    ) as VoiceChannel | undefined;
+
+    if (existing) {
+      await interaction.reply({ content: `Канал уже существует: ${existing}`, ephemeral: true });
+      return;
+    }
+
+    const channel = await interaction.guild.channels.create({
+      name: CREATE_CHANNEL_NAME,
+      type: ChannelType.GuildVoice
+    });
+
+    await interaction.reply({ content: `Создан канал ${channel}`, ephemeral: true });
+  }
+});
 
 client.on('voiceStateUpdate', async (oldState, newState) => {
   // Create a temporary voice channel when user joins the create channel
