@@ -1,10 +1,22 @@
 import {
-  Client,
-  GatewayIntentBits,
-  VoiceChannel,
+  ActionRowBuilder,
+  ButtonBuilder,
+  ButtonStyle,
   CategoryChannel,
   ChannelType,
-  PermissionFlagsBits
+  Client,
+  EmbedBuilder,
+  GatewayIntentBits,
+  Interaction,
+  InteractionType,
+  MessageFlags,
+  PermissionFlagsBits,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
+  ModalBuilder,
+  VoiceChannel,
+  TextChannel
 } from 'discord.js';
 import dotenv from 'dotenv';
 
@@ -12,6 +24,7 @@ dotenv.config();
 
 const CREATE_CHANNEL_NAME = 'Создать канал';
 const TEMP_CHANNEL_PREFIX = 'Канал ';
+const INTERFACE_CHANNEL_NAME = 'Интерфейс';
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -33,13 +46,21 @@ client.once('ready', async () => {
 
 const createdChannels = new Set<string>();
 
+function getUserTempChannel(interaction: Interaction): VoiceChannel | null {
+  const member = interaction.guild?.members.cache.get(interaction.user.id);
+  const channel = member?.voice.channel as VoiceChannel | null | undefined;
+  if (channel && createdChannels.has(channel.id)) {
+    return channel;
+  }
+  return null;
+}
+
 client.on('interactionCreate', async interaction => {
-  if (!interaction.isChatInputCommand()) return;
-  if (interaction.commandName === 'setup') {
+  if (interaction.isChatInputCommand() && interaction.commandName === 'setup') {
     if (!interaction.guild) {
       await interaction.reply({
         content: 'Эту команду можно использовать только на сервере',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -48,7 +69,7 @@ client.on('interactionCreate', async interaction => {
     if (!memberPerms || !memberPerms.has(PermissionFlagsBits.ManageChannels)) {
       await interaction.reply({
         content: 'Недостаточно прав для выполнения команды',
-        ephemeral: true
+        flags: MessageFlags.Ephemeral
       });
       return;
     }
@@ -57,17 +78,117 @@ client.on('interactionCreate', async interaction => {
       c => c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
     ) as VoiceChannel | undefined;
 
+    const existingInterface = interaction.guild.channels.cache.find(
+      c => c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+    );
+
     if (existing) {
-      await interaction.reply({ content: `Канал уже существует: ${existing}`, ephemeral: true });
+      await interaction.reply({ content: `Канал уже существует: ${existing}`, flags: MessageFlags.Ephemeral });
       return;
     }
+
+    const interfaceChannel = existingInterface
+      ? (existingInterface as TextChannel)
+      : ((await interaction.guild.channels.create({
+          name: INTERFACE_CHANNEL_NAME,
+          type: ChannelType.GuildText
+        })) as TextChannel);
 
     const channel = await interaction.guild.channels.create({
       name: CREATE_CHANNEL_NAME,
       type: ChannelType.GuildVoice
     });
 
-    await interaction.reply({ content: `Создан канал ${channel}`, ephemeral: true });
+    const embed = new EmbedBuilder()
+      .setTitle('Настройка временного канала')
+      .setDescription(
+        'Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.'
+      );
+
+    const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId('toggle_privacy')
+        .setLabel('Приватность')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId('rename')
+        .setLabel('Переименовать')
+        .setStyle(ButtonStyle.Secondary)
+    );
+
+    const row2 = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId('region')
+        .setPlaceholder('Выберите регион')
+        .addOptions(
+          { label: 'Авто', value: 'auto' },
+          { label: 'Россия', value: 'russia' },
+          { label: 'Европа', value: 'europe' }
+        )
+    );
+
+    await interfaceChannel.send({ embeds: [embed], components: [row1, row2] });
+
+    await interaction.reply({ content: `Создан канал ${channel} и ${interfaceChannel}`, flags: MessageFlags.Ephemeral });
+  } else if (interaction.isButton()) {
+    if (interaction.customId === 'toggle_privacy') {
+      const channel = getUserTempChannel(interaction);
+      if (!channel) {
+        await interaction.reply({
+          content: 'Вы должны находиться в своём временном канале',
+          flags: MessageFlags.Ephemeral
+        });
+        return;
+      }
+      const everyone = interaction.guild!.roles.everyone;
+      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+      const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+      await channel.permissionOverwrites.edit(everyone, {
+        Connect: isPrivate ? null : false
+      });
+      await interaction.reply({
+        content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
+        flags: MessageFlags.Ephemeral
+      });
+    } else if (interaction.customId === 'rename') {
+      const modal = new ModalBuilder().setCustomId('rename_modal').setTitle('Переименовать канал');
+
+      const input = new TextInputBuilder()
+        .setCustomId('name_input')
+        .setLabel('Новое название')
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true);
+
+      modal.addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input));
+      await interaction.showModal(modal);
+    }
+  } else if (interaction.isStringSelectMenu() && interaction.customId === 'region') {
+    const channel = getUserTempChannel(interaction);
+    if (!channel) {
+      await interaction.reply({
+        content: 'Вы должны находиться в своём временном канале',
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+    const value = interaction.values[0];
+    await channel.setRTCRegion(value === 'auto' ? null : value);
+    await interaction.reply({
+      content: `Регион канала установлен: ${value}`,
+      flags: MessageFlags.Ephemeral
+    });
+  } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'rename_modal') {
+    const channel = getUserTempChannel(interaction);
+    if (!channel) {
+      await interaction.reply({
+        content: 'Вы должны находиться в своём временном канале',
+        flags: MessageFlags.Ephemeral
+      });
+      return;
+    }
+    const name = interaction.fields.getTextInputValue('name_input');
+    await channel.setName(name);
+    await interaction.reply({ content: `Название канала изменено на ${name}`, flags: MessageFlags.Ephemeral });
   }
 });
 
