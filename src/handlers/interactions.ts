@@ -16,8 +16,25 @@ import {
   VoiceChannel,
   TextChannel
 } from "discord.js";
-import { CREATE_CHANNEL_NAME, INTERFACE_CHANNEL_NAME } from "../constants";
-import { createdChannels, channelOwners, trustedUsers } from "../state";
+import {
+  CREATE_CHANNEL_NAME,
+  INTERFACE_CHANNEL_NAME,
+  TEMP_CHANNEL_PREFIX,
+  LOCK_OPEN,
+  LOCK_CLOSED,
+  ICON_PRIVACY,
+  ICON_RENAME,
+  ICON_LIMIT,
+  ICON_DELETE,
+  ICON_INVITE,
+  ICON_KICK,
+  ICON_BLOCK,
+  ICON_UNBLOCK,
+  ICON_TRUSTED_ADD,
+  ICON_TRUSTED_REMOVE,
+  ICON_TRANSFER
+} from "../constants";
+import { createdChannels, channelOwners, trustedUsers, channelNumbers } from "../state";
 import { isManager, getUserTempChannel } from "../voice";
 
 export async function handleInteraction(interaction: Interaction) {
@@ -77,28 +94,43 @@ export async function handleInteraction(interaction: Interaction) {
       type: ChannelType.GuildVoice
     });
 
+    const legend = [
+      `${ICON_PRIVACY} приватность`,
+      `${ICON_RENAME} имя`,
+      `${ICON_LIMIT} лимит`,
+      `${ICON_DELETE} удалить`,
+      `${ICON_INVITE} пригласить`,
+      `${ICON_KICK} выгнать`,
+      `${ICON_BLOCK} блок`,
+      `${ICON_UNBLOCK} разблок`,
+      `${ICON_TRUSTED_ADD} доверенный`,
+      `${ICON_TRUSTED_REMOVE} убрать доверенного`,
+      `${ICON_TRANSFER} лидер`
+    ].join(' | ');
+
     const embed = new EmbedBuilder()
       .setTitle('Настройка временного канала')
+      .setColor(0x00ff00)
       .setDescription(
-        'Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.'
+        `Используйте кнопки ниже чтобы управлять созданным для вас голосовым каналом.\n${legend}`
       );
 
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId('toggle_privacy')
-      .setLabel('Приватность')
+      .setEmoji(ICON_PRIVACY)
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId('rename')
-      .setLabel('Переименовать')
+      .setEmoji(ICON_RENAME)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('set_limit')
-      .setLabel('Лимит')
+      .setEmoji(ICON_LIMIT)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('delete_channel')
-      .setLabel('Удалить')
+      .setEmoji(ICON_DELETE)
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -116,34 +148,34 @@ export async function handleInteraction(interaction: Interaction) {
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId('invite_user')
-      .setLabel('Пригласить')
+      .setEmoji(ICON_INVITE)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('kick_user')
-      .setLabel('Выгнать')
+      .setEmoji(ICON_KICK)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('block_user')
-      .setLabel('Заблокировать')
+      .setEmoji(ICON_BLOCK)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('unblock_user')
-      .setLabel('Разблокировать')
+      .setEmoji(ICON_UNBLOCK)
       .setStyle(ButtonStyle.Secondary)
   );
 
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId('add_trusted')
-      .setLabel('Доверенный')
+      .setEmoji(ICON_TRUSTED_ADD)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('remove_trusted')
-      .setLabel('Убрать доверенного')
+      .setEmoji(ICON_TRUSTED_REMOVE)
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId('transfer_leader')
-      .setLabel('Передать лидера')
+      .setEmoji(ICON_TRANSFER)
       .setStyle(ButtonStyle.Secondary)
   );
 
@@ -165,16 +197,21 @@ export async function handleInteraction(interaction: Interaction) {
       return;
     }
     if (sub === 'privacy') {
-      const everyone = interaction.guild!.roles.everyone;
-      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-      const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
-      await channel.permissionOverwrites.edit(everyone, {
-        Connect: isPrivate ? null : false
-      });
-      await interaction.reply({
-        content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
-        flags: MessageFlags.Ephemeral
-      });
+    const everyone = interaction.guild!.roles.everyone;
+    const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+    const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+    await channel.permissionOverwrites.edit(everyone, {
+      Connect: isPrivate ? null : false
+    });
+    const number = channelNumbers.get(channel.id);
+    if (number !== undefined) {
+      const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
+      await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
+    }
+    await interaction.reply({
+      content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
+      flags: MessageFlags.Ephemeral
+    });
     } else if (sub === 'rename') {
       const name = interaction.options.getString('name', true);
       await channel.setName(name);
@@ -256,10 +293,15 @@ export async function handleInteraction(interaction: Interaction) {
       await channel.permissionOverwrites.edit(everyone, {
         Connect: isPrivate ? null : false
       });
-    await interaction.reply({
-      content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
-      flags: MessageFlags.Ephemeral
-    });
+      const number = channelNumbers.get(channel.id);
+      if (number !== undefined) {
+        const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
+        await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
+      }
+      await interaction.reply({
+        content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
+        flags: MessageFlags.Ephemeral
+      });
     } else if (interaction.customId === 'rename') {
       const channel = getUserTempChannel(interaction);
       if (!channel || !isManager(channel.id, interaction.user.id)) {

@@ -1,3 +1,16 @@
 export const CREATE_CHANNEL_NAME = 'Создать канал';
 export const TEMP_CHANNEL_PREFIX = 'Канал ';
 export const INTERFACE_CHANNEL_NAME = 'Интерфейс';
+export const LOCK_OPEN = '🔓';
+export const LOCK_CLOSED = '🔒';
+export const ICON_PRIVACY = '🔒';
+export const ICON_RENAME = '✏️';
+export const ICON_LIMIT = '🔢';
+export const ICON_DELETE = '🗑️';
+export const ICON_INVITE = '➕';
+export const ICON_KICK = '🚪';
+export const ICON_BLOCK = '⛔';
+export const ICON_UNBLOCK = '✅';
+export const ICON_TRUSTED_ADD = '⭐';
+export const ICON_TRUSTED_REMOVE = '❌';
+export const ICON_TRANSFER = '👑';
