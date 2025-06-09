@@ -3,7 +3,8 @@ import {
   createdChannels,
   channelOwners,
   trustedUsers,
-  channelNumbers
+  channelNumbers,
+  channelNames
 } from './state';
 import {
   CREATE_CHANNEL_NAME,
@@ -13,6 +14,14 @@ import {
 } from './constants';
 
 let channelCounter = 0;
+
+export function formatChannelName(channelId: string, isPrivate: boolean): string {
+  const base = channelNames.get(channelId) ?? TEMP_CHANNEL_PREFIX;
+  const number = channelNumbers.get(channelId);
+  const lock = isPrivate ? LOCK_CLOSED : LOCK_OPEN;
+  const suffix = number !== undefined ? `[#${number}]` : '';
+  return `[${lock}] ${base}${suffix}`;
+}
 
 export function isManager(channelId: string, userId: string): boolean {
   return (
@@ -43,6 +52,7 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
     channelOwners.set(newChannel.id, newState.id);
     trustedUsers.set(newChannel.id, new Set([newState.id]));
     channelNumbers.set(newChannel.id, number);
+    channelNames.set(newChannel.id, TEMP_CHANNEL_PREFIX);
     await newState.setChannel(newChannel);
   }
 
@@ -52,6 +62,7 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
       channelOwners.delete(oldState.channel.id);
       trustedUsers.delete(oldState.channel.id);
       channelNumbers.delete(oldState.channel.id);
+      channelNames.delete(oldState.channel.id);
       try {
         await oldState.channel.delete();
       } catch {

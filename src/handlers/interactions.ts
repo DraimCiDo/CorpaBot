@@ -35,8 +35,8 @@ import {
   ICON_TRUSTED_REMOVE,
   ICON_TRANSFER
 } from "../constants";
-import { createdChannels, channelOwners, trustedUsers, channelNumbers } from "../state";
-import { isManager, getUserTempChannel } from "../voice";
+import { createdChannels, channelOwners, trustedUsers, channelNumbers, channelNames } from "../state";
+import { isManager, getUserTempChannel, formatChannelName } from "../voice";
 
 export async function handleInteraction(interaction: Interaction) {
   if (interaction.isAutocomplete() && interaction.commandName === 'voice') {
@@ -200,18 +200,19 @@ export async function handleInteraction(interaction: Interaction) {
     await channel.permissionOverwrites.edit(everyone, {
       Connect: isPrivate ? null : false
     });
-    const number = channelNumbers.get(channel.id);
-    if (number !== undefined) {
-      const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
-      await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
-    }
+    const lockName = formatChannelName(channel.id, !isPrivate);
+    await channel.setName(lockName);
     await interaction.reply({
       content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
       flags: MessageFlags.Ephemeral
     });
     } else if (sub === 'rename') {
       const name = interaction.options.getString('name', true);
-      await channel.setName(name);
+      channelNames.set(channel.id, name);
+      const everyone = interaction.guild!.roles.everyone;
+      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+      const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+      await channel.setName(formatChannelName(channel.id, isPrivate));
       await interaction.reply({ content: `Название канала изменено на ${name}`, flags: MessageFlags.Ephemeral });
     } else if (sub === 'limit') {
       const limit = interaction.options.getInteger('limit', true);
@@ -227,6 +228,7 @@ export async function handleInteraction(interaction: Interaction) {
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
       channelNumbers.delete(channel.id);
+      channelNames.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });
     } else if (sub === 'region') {
       const value = interaction.options.getString('region', true);
@@ -291,11 +293,8 @@ export async function handleInteraction(interaction: Interaction) {
       await channel.permissionOverwrites.edit(everyone, {
         Connect: isPrivate ? null : false
       });
-      const number = channelNumbers.get(channel.id);
-      if (number !== undefined) {
-        const lock = isPrivate ? LOCK_OPEN : LOCK_CLOSED;
-        await channel.setName(`[${lock}] ${TEMP_CHANNEL_PREFIX}[#${number}]`);
-      }
+      const lockName = formatChannelName(channel.id, !isPrivate);
+      await channel.setName(lockName);
       await interaction.reply({
         content: isPrivate ? 'Канал теперь публичный' : 'Канал теперь приватный',
         flags: MessageFlags.Ephemeral
@@ -461,6 +460,7 @@ export async function handleInteraction(interaction: Interaction) {
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
       channelNumbers.delete(channel.id);
+      channelNames.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });
     }
   } else if (interaction.isStringSelectMenu() && interaction.customId === 'region_select') {
@@ -488,7 +488,11 @@ export async function handleInteraction(interaction: Interaction) {
       return;
     }
     const name = interaction.fields.getTextInputValue('name_input');
-    await channel.setName(name);
+    channelNames.set(channel.id, name);
+    const everyone = interaction.guild!.roles.everyone;
+    const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+    const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+    await channel.setName(formatChannelName(channel.id, isPrivate));
     await interaction.reply({ content: `Название канала изменено на ${name}`, flags: MessageFlags.Ephemeral });
   } else if (interaction.type === InteractionType.ModalSubmit && interaction.customId === 'limit_modal') {
     const channel = getUserTempChannel(interaction);
