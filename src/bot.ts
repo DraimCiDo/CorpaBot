@@ -15,7 +15,8 @@ import {
   TextInputBuilder,
   TextInputStyle,
   ModalBuilder,
-  VoiceChannel
+  VoiceChannel,
+  TextChannel
 } from 'discord.js';
 import dotenv from 'dotenv';
 
@@ -23,6 +24,7 @@ dotenv.config();
 
 const CREATE_CHANNEL_NAME = 'Создать канал';
 const TEMP_CHANNEL_PREFIX = 'Канал ';
+const INTERFACE_CHANNEL_NAME = 'Интерфейс';
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
@@ -76,10 +78,21 @@ client.on('interactionCreate', async interaction => {
       c => c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
     ) as VoiceChannel | undefined;
 
+    const existingInterface = interaction.guild.channels.cache.find(
+      c => c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+    );
+
     if (existing) {
       await interaction.reply({ content: `Канал уже существует: ${existing}`, flags: MessageFlags.Ephemeral });
       return;
     }
+
+    const interfaceChannel = existingInterface
+      ? (existingInterface as TextChannel)
+      : ((await interaction.guild.channels.create({
+          name: INTERFACE_CHANNEL_NAME,
+          type: ChannelType.GuildText
+        })) as TextChannel);
 
     const channel = await interaction.guild.channels.create({
       name: CREATE_CHANNEL_NAME,
@@ -114,9 +127,9 @@ client.on('interactionCreate', async interaction => {
         )
     );
 
-    await interaction.channel?.send({ embeds: [embed], components: [row1, row2] });
+    await interfaceChannel.send({ embeds: [embed], components: [row1, row2] });
 
-    await interaction.reply({ content: `Создан канал ${channel}`, flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: `Создан канал ${channel} и ${interfaceChannel}`, flags: MessageFlags.Ephemeral });
   } else if (interaction.isButton()) {
     if (interaction.customId === 'toggle_privacy') {
       const channel = getUserTempChannel(interaction);
