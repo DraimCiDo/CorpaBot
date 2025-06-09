@@ -35,7 +35,7 @@ import {
   ICON_TRUSTED_REMOVE,
   ICON_TRANSFER
 } from "../constants";
-import { createdChannels, channelOwners, trustedUsers, channelNumbers, channelNames } from "../state";
+import { createdChannels, channelOwners, trustedUsers, channelNumbers, channelNames, availableNumbers } from "../state";
 import { isManager, getUserTempChannel, formatChannelName } from "../voice";
 
 export async function handleInteraction(interaction: Interaction) {
@@ -227,6 +227,10 @@ export async function handleInteraction(interaction: Interaction) {
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
+      const number = channelNumbers.get(channel.id);
+      if (number !== undefined) {
+        availableNumbers.add(number);
+      }
       channelNumbers.delete(channel.id);
       channelNames.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });
@@ -459,6 +463,10 @@ export async function handleInteraction(interaction: Interaction) {
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
+      const number = channelNumbers.get(channel.id);
+      if (number !== undefined) {
+        availableNumbers.add(number);
+      }
       channelNumbers.delete(channel.id);
       channelNames.delete(channel.id);
       await interaction.reply({ content: 'Канал удалён', flags: MessageFlags.Ephemeral });

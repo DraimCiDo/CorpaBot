@@ -4,7 +4,8 @@ import {
   channelOwners,
   trustedUsers,
   channelNumbers,
-  channelNames
+  channelNames,
+  availableNumbers
 } from './state';
 import {
   CREATE_CHANNEL_NAME,
@@ -42,7 +43,13 @@ export function getUserTempChannel(interaction: Interaction): VoiceChannel | nul
 export async function handleVoiceStateUpdate(oldState: any, newState: any) {
   if (newState.channel && newState.channel.name === CREATE_CHANNEL_NAME) {
     const category = newState.channel.parent as CategoryChannel | null;
-    const number = ++channelCounter;
+    const number =
+      availableNumbers.size > 0
+        ? Math.min(...availableNumbers)
+        : ++channelCounter;
+    if (availableNumbers.size > 0) {
+      availableNumbers.delete(number);
+    }
     const newChannel = (await newState.guild.channels.create({
       name: `[${LOCK_OPEN}] ${TEMP_CHANNEL_PREFIX}[#${number}]`,
       type: ChannelType.GuildVoice,
@@ -61,6 +68,10 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
       createdChannels.delete(oldState.channel.id);
       channelOwners.delete(oldState.channel.id);
       trustedUsers.delete(oldState.channel.id);
+      const number = channelNumbers.get(oldState.channel.id);
+      if (number !== undefined) {
+        availableNumbers.add(number);
+      }
       channelNumbers.delete(oldState.channel.id);
       channelNames.delete(oldState.channel.id);
       try {
