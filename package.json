@@ -9,8 +9,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "dotenv": "^16.4.5",
-    "discord-gamesdk": "^0.1.0"
+    "dotenv": "^16.4.5"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
