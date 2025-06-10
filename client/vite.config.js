@@ -15,5 +15,6 @@ export default defineConfig({
     hmr: {
       clientPort: 443,
     },
+    allowedHosts: ['corpa.draimcido.net', 'holly-retrieve-numbers-gathering.trycloudflare.com']
   },
 });
