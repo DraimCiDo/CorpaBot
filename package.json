@@ -1,22 +1,21 @@
 {
-  "name": "corpabot",
+  "name": "corpa-activity-web",
   "version": "1.0.0",
   "packageManager": "pnpm@8.15.0",
-  "main": "dist/bot.js",
+  "main": "dist/server.js",
   "scripts": {
     "build": "tsc",
-    "start": "node dist/bot.js",
-    "dev": "ts-node src/bot.ts",
-    "activity": "node dist/activity.js"
+    "start": "node dist/server.js"
   },
   "dependencies": {
-    "discord.js": "^14.13.0",
+    "express": "^4.19.2",
     "dotenv": "^16.4.5",
     "discord-gamesdk": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
     "ts-node": "^10.9.2",
-    "@types/node": "^22.15.30"
+    "@types/node": "^22.15.30",
+    "@types/express": "^4.17.21"
   }
 }
