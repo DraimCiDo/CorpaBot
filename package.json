@@ -1,4 +1,10 @@
 {
+  "name": "CorpaBot",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "menu": "node menu.js"
+  },
   "dependencies": {
     "cloudflared": "^0.7.0"
   }
