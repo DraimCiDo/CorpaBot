@@ -6,11 +6,13 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/bot.js",
-    "dev": "ts-node src/bot.ts"
+    "dev": "ts-node src/bot.ts",
+    "activity": "node dist/activity.js"
   },
   "dependencies": {
     "discord.js": "^14.13.0",
-    "dotenv": "^16.4.5"
+    "dotenv": "^16.4.5",
+    "discord-gamesdk": "^0.1.0"
   },
   "devDependencies": {
     "typescript": "^5.4.0",
