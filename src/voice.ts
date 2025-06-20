@@ -1,26 +1,34 @@
-import { CategoryChannel, ChannelType, VoiceChannel, Interaction } from 'discord.js';
+import {
+  CategoryChannel,
+  ChannelType,
+  VoiceChannel,
+  Interaction,
+} from "discord.js";
 import {
   createdChannels,
   channelOwners,
   trustedUsers,
   channelNumbers,
   channelNames,
-  availableNumbers
-} from './state';
+  availableNumbers,
+} from "./state";
 import {
   CREATE_CHANNEL_NAME,
   TEMP_CHANNEL_PREFIX,
   LOCK_OPEN,
-  LOCK_CLOSED
-} from './constants';
+  LOCK_CLOSED,
+} from "./constants";
 
 let channelCounter = 0;
 
-export function formatChannelName(channelId: string, isPrivate: boolean): string {
+export function formatChannelName(
+  channelId: string,
+  isPrivate: boolean
+): string {
   const base = channelNames.get(channelId) ?? TEMP_CHANNEL_PREFIX;
   const number = channelNumbers.get(channelId);
   const lock = isPrivate ? LOCK_CLOSED : LOCK_OPEN;
-  const suffix = number !== undefined ? `[#${number}]` : '';
+  const suffix = number !== undefined ? `[#${number}]` : "";
   return `[${lock}] ${base}${suffix}`;
 }
 
@@ -31,7 +39,9 @@ export function isManager(channelId: string, userId: string): boolean {
   );
 }
 
-export function getUserTempChannel(interaction: Interaction): VoiceChannel | null {
+export function getUserTempChannel(
+  interaction: Interaction
+): VoiceChannel | null {
   const member = interaction.guild?.members.cache.get(interaction.user.id);
   const channel = member?.voice.channel as VoiceChannel | null | undefined;
   if (channel && createdChannels.has(channel.id)) {
@@ -53,7 +63,7 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
     const newChannel = (await newState.guild.channels.create({
       name: `[${LOCK_OPEN}] ${TEMP_CHANNEL_PREFIX}[#${number}]`,
       type: ChannelType.GuildVoice,
-      parent: category ?? undefined
+      parent: category ?? undefined,
     })) as VoiceChannel;
     createdChannels.add(newChannel.id);
     channelOwners.set(newChannel.id, newState.id);
