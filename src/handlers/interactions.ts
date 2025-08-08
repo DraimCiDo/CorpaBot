@@ -1,30 +1,29 @@
 import {
   ActionRowBuilder,
+  AutocompleteInteraction,
   ButtonBuilder,
+  ButtonInteraction,
   ButtonStyle,
   ChannelType,
+  ChatInputCommandInteraction,
   EmbedBuilder,
   Interaction,
-  InteractionType,
-  MessageFlags,
+  ModalBuilder,
+  ModalSubmitInteraction,
   PermissionFlagsBits,
   StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
+  TextChannel,
   TextInputBuilder,
   TextInputStyle,
-  ModalBuilder,
   UserSelectMenuBuilder,
-  AutocompleteInteraction,
-  VoiceChannel,
-  TextChannel,
+  UserSelectMenuInteraction,
   CategoryChannel,
 } from "discord.js";
 import {
   CREATE_CHANNEL_NAME,
   INTERFACE_CHANNEL_NAME,
   VOICE_CATEGORY_NAME,
-  TEMP_CHANNEL_PREFIX,
-  LOCK_OPEN,
-  LOCK_CLOSED,
   ICON_PRIVACY,
   ICON_RENAME,
   ICON_LIMIT,
@@ -48,7 +47,12 @@ import {
 } from "../state";
 import { isManager, getUserTempChannel, formatChannelName } from "../voice";
 
-async function sendInterfaceMessage(interfaceChannel: TextChannel) {
+const ephemeral = (content: string) => ({
+  content,
+  ephemeral: true,
+});
+
+async function sendInterfaceMessage(channel: TextChannel) {
   const embed = new EmbedBuilder()
     .setTitle("Настройка временного канала")
     .setColor(0x00ff00)
@@ -59,843 +63,478 @@ async function sendInterfaceMessage(interfaceChannel: TextChannel) {
       "https://cdn.discordapp.com/attachments/1148739831594242211/1381962774590132234/NEUKRAL2004.png?ex=68569ba1&is=68554a21&hm=c258a72a5a3406357054ede7d23ad573639576ea9a00338a745bbd869d947073&"
     );
 
-  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("toggle_privacy")
-      .setEmoji(ICON_PRIVACY)
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("rename")
-      .setEmoji(ICON_RENAME)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("set_limit")
-      .setEmoji(ICON_LIMIT)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("change_region")
-      .setEmoji(ICON_REGION)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("delete_channel")
-      .setEmoji(ICON_DELETE)
-      .setStyle(ButtonStyle.Danger)
-  );
+  const makeRow = (
+    btns: [string, string, ButtonStyle][]
+  ) =>
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      btns.map(([id, emoji, style]) =>
+        new ButtonBuilder().setCustomId(id).setEmoji(emoji).setStyle(style)
+      )
+    );
 
-  const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("invite_user")
-      .setEmoji(ICON_INVITE)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("kick_user")
-      .setEmoji(ICON_KICK)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("block_user")
-      .setEmoji(ICON_BLOCK)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("unblock_user")
-      .setEmoji(ICON_UNBLOCK)
-      .setStyle(ButtonStyle.Secondary)
-  );
+  const rows = [
+    makeRow([
+      ["toggle_privacy", ICON_PRIVACY, ButtonStyle.Primary],
+      ["rename", ICON_RENAME, ButtonStyle.Secondary],
+      ["set_limit", ICON_LIMIT, ButtonStyle.Secondary],
+      ["change_region", ICON_REGION, ButtonStyle.Secondary],
+      ["delete_channel", ICON_DELETE, ButtonStyle.Danger],
+    ]),
+    makeRow([
+      ["invite_user", ICON_INVITE, ButtonStyle.Secondary],
+      ["kick_user", ICON_KICK, ButtonStyle.Secondary],
+      ["block_user", ICON_BLOCK, ButtonStyle.Secondary],
+      ["unblock_user", ICON_UNBLOCK, ButtonStyle.Secondary],
+    ]),
+    makeRow([
+      ["add_trusted", ICON_TRUSTED_ADD, ButtonStyle.Secondary],
+      ["remove_trusted", ICON_TRUSTED_REMOVE, ButtonStyle.Secondary],
+      ["transfer_leader", ICON_TRANSFER, ButtonStyle.Secondary],
+    ]),
+  ];
 
-  const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("add_trusted")
-      .setEmoji(ICON_TRUSTED_ADD)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("remove_trusted")
-      .setEmoji(ICON_TRUSTED_REMOVE)
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("transfer_leader")
-      .setEmoji(ICON_TRANSFER)
-      .setStyle(ButtonStyle.Secondary)
-  );
-
-  await interfaceChannel.send({
-    embeds: [embed],
-    components: [row1, row3, row4],
-  });
+  await channel.send({ embeds: [embed], components: rows });
 }
 
-export async function handleInteraction(interaction: Interaction) {
-  if (interaction.isAutocomplete() && interaction.commandName === "voice") {
-    const focused = interaction.options.getFocused(true);
-    if (focused.name === "user") {
-      const channel = getUserTempChannel(
-        interaction as AutocompleteInteraction
-      );
-      const members = channel ? [...channel.members.values()] : [];
-      await interaction.respond(
-        members.slice(0, 25).map((m) => ({ name: m.displayName, value: m.id }))
-      );
-    } else {
-      await interaction.respond([]);
-    }
-    return;
-  }
-  if (interaction.isChatInputCommand() && interaction.commandName === "setup") {
-    if (!interaction.guild) {
-      await interaction.reply({
-        content: "Эту команду можно использовать только на сервере",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+async function handleAutocomplete(inter: AutocompleteInteraction) {
+  const focused = inter.options.getFocused(true);
+  if (focused.name !== "user") return inter.respond([]);
+  const channel = getUserTempChannel(inter);
+  const members = channel ? [...channel.members.values()] : [];
+  await inter.respond(
+    members.slice(0, 25).map((m) => ({ name: m.displayName, value: m.id }))
+  );
+}
 
-    const memberPerms = interaction.memberPermissions;
-    if (!memberPerms || !memberPerms.has(PermissionFlagsBits.ManageChannels)) {
-      await interaction.reply({
-        content: "Недостаточно прав для выполнения команды",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const existing = interaction.guild.channels.cache.find(
-      (c: any) =>
-        c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
-    ) as VoiceChannel | undefined;
-
-    const existingInterface = interaction.guild.channels.cache.find(
-      (c: any) =>
-        c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+async function handleSetup(inter: ChatInputCommandInteraction) {
+  if (!inter.guild)
+    return inter.reply(
+      ephemeral("Эту команду можно использовать только на сервере")
     );
+  if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
+    return inter.reply(ephemeral("Недостаточно прав для выполнения команды"));
 
-    const existingCategory = interaction.guild.channels.cache.find(
+  const existing = inter.guild.channels.cache.find(
+    (c: any) =>
+      c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
+  );
+  if (existing)
+    return inter.reply(ephemeral(`Канал уже существует: ${existing}`));
+
+  const category =
+    (inter.guild.channels.cache.find(
       (c: any) =>
         c.name === VOICE_CATEGORY_NAME && c.type === ChannelType.GuildCategory
-    );
+    ) as CategoryChannel) ||
+    (await inter.guild.channels.create({
+      name: VOICE_CATEGORY_NAME,
+      type: ChannelType.GuildCategory,
+    }));
 
-    if (existing) {
-      await interaction.reply({
-        content: `Канал уже существует: ${existing}`,
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const category = existingCategory
-      ? (existingCategory as CategoryChannel)
-      : await interaction.guild.channels.create({
-          name: VOICE_CATEGORY_NAME,
-          type: ChannelType.GuildCategory,
-        });
-
-    const interfaceChannel = existingInterface
-      ? (existingInterface as TextChannel)
-      : ((await interaction.guild.channels.create({
-          name: INTERFACE_CHANNEL_NAME,
-          type: ChannelType.GuildText,
-          parent: category.id,
-        })) as TextChannel);
-
-    if (existingInterface && existingInterface.parentId !== category.id) {
-      await (existingInterface as TextChannel).setParent(category.id);
-    }
-
-    const channel = await interaction.guild.channels.create({
-      name: CREATE_CHANNEL_NAME,
-      type: ChannelType.GuildVoice,
-      parent: category.id,
-    });
-
-    await sendInterfaceMessage(interfaceChannel);
-
-    await interaction.reply({
-      content: `Создан канал ${channel} и ${interfaceChannel}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isChatInputCommand() &&
-    interaction.commandName === "interface"
-  ) {
-    if (!interaction.guild) {
-      await interaction.reply({
-        content: "Эту команду можно использовать только на сервере",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const memberPerms = interaction.memberPermissions;
-    if (!memberPerms || !memberPerms.has(PermissionFlagsBits.ManageChannels)) {
-      await interaction.reply({
-        content: "Недостаточно прав для выполнения команды",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-
-    const interfaceChannel = interaction.guild.channels.cache.find(
+  const interfaceChannel =
+    (inter.guild.channels.cache.find(
       (c: any) =>
         c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
-    ) as TextChannel | undefined;
+    ) as TextChannel) ||
+    ((await inter.guild.channels.create({
+      name: INTERFACE_CHANNEL_NAME,
+      type: ChannelType.GuildText,
+      parent: category.id,
+    })) as TextChannel);
 
-    if (!interfaceChannel) {
-      await interaction.reply({
-        content: "Канал Интерфейс не найден",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
+  if (interfaceChannel.parentId !== category.id)
+    await interfaceChannel.setParent(category.id);
 
-    await sendInterfaceMessage(interfaceChannel);
-    await interaction.reply({
-      content: "Сообщение обновлено",
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isChatInputCommand() &&
-    interaction.commandName === "voice"
-  ) {
-    const sub = interaction.options.getSubcommand();
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    if (!isManager(channel.id, interaction.user.id)) {
-      await interaction.reply({
-        content: "Недостаточно прав",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    if (sub === "privacy") {
-      const everyone = interaction.guild!.roles.everyone;
+  const channel = await inter.guild.channels.create({
+    name: CREATE_CHANNEL_NAME,
+    type: ChannelType.GuildVoice,
+    parent: category.id,
+  });
+
+  await sendInterfaceMessage(interfaceChannel);
+  await inter.reply(
+    ephemeral(`Создан канал ${channel} и ${interfaceChannel}`)
+  );
+}
+
+async function handleInterface(inter: ChatInputCommandInteraction) {
+  if (!inter.guild)
+    return inter.reply(
+      ephemeral("Эту команду можно использовать только на сервере")
+    );
+  if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
+    return inter.reply(ephemeral("Недостаточно прав для выполнения команды"));
+
+  const interfaceChannel = inter.guild.channels.cache.find(
+    (c: any) =>
+      c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+  ) as TextChannel | undefined;
+  if (!interfaceChannel)
+    return inter.reply(ephemeral("Канал Интерфейс не найден"));
+
+  await sendInterfaceMessage(interfaceChannel);
+  await inter.reply(ephemeral("Сообщение обновлено"));
+}
+
+async function withChannel(
+  inter:
+    | ChatInputCommandInteraction
+    | ButtonInteraction
+    | StringSelectMenuInteraction
+    | UserSelectMenuInteraction,
+  requireManager = true
+) {
+  const channel = getUserTempChannel(inter);
+  if (!channel) {
+    await inter.reply(ephemeral("Вы должны находиться в своём временном канале"));
+    return null;
+  }
+  if (requireManager && !isManager(channel.id, inter.user.id)) {
+    await inter.reply(ephemeral("Недостаточно прав"));
+    return null;
+  }
+  return channel;
+}
+
+async function handleVoice(inter: ChatInputCommandInteraction) {
+  const channel = await withChannel(inter);
+  if (!channel) return;
+
+  const sub = inter.options.getSubcommand();
+  switch (sub) {
+    case "privacy": {
+      const everyone = inter.guild!.roles.everyone;
       const overwrite = channel.permissionOverwrites.resolve(everyone.id);
       const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
       await channel.permissionOverwrites.edit(everyone, {
         Connect: isPrivate ? null : false,
       });
-      const lockName = formatChannelName(channel.id, !isPrivate);
-      await channel.setName(lockName);
-      await interaction.reply({
-        content: isPrivate
-          ? "Канал теперь публичный"
-          : "Канал теперь приватный",
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (sub === "rename") {
-      const name = interaction.options.getString("name", true);
+      await channel.setName(formatChannelName(channel.id, !isPrivate));
+      await inter.reply(
+        ephemeral(
+          isPrivate ? "Канал теперь публичный" : "Канал теперь приватный"
+        )
+      );
+      break;
+    }
+    case "rename": {
+      const name = inter.options.getString("name", true);
       channelNames.set(channel.id, name);
-      const everyone = interaction.guild!.roles.everyone;
+      const everyone = inter.guild!.roles.everyone;
       const overwrite = channel.permissionOverwrites.resolve(everyone.id);
       const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
       await channel.setName(formatChannelName(channel.id, isPrivate));
-      await interaction.reply({
-        content: `Название канала изменено на ${name}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (sub === "limit") {
-      const limit = interaction.options.getInteger("limit", true);
-      if (limit < 0 || limit > 99) {
-        await interaction.reply({
-          content: "Неверное значение",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      await inter.reply(ephemeral(`Название канала изменено на ${name}`));
+      break;
+    }
+    case "limit": {
+      const limit = inter.options.getInteger("limit", true);
+      if (limit < 0 || limit > 99)
+        return inter.reply(ephemeral("Неверное значение"));
       await channel.setUserLimit(limit);
-      await interaction.reply({
-        content: `Лимит установлен: ${limit}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (sub === "delete") {
+      await inter.reply(ephemeral(`Лимит установлен: ${limit}`));
+      break;
+    }
+    case "delete": {
       await channel.delete();
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
       const number = channelNumbers.get(channel.id);
-      if (number !== undefined) {
-        availableNumbers.add(number);
-      }
+      if (number !== undefined) availableNumbers.add(number);
       channelNumbers.delete(channel.id);
       channelNames.delete(channel.id);
-      await interaction.reply({
-        content: "Канал удалён",
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (sub === "region") {
-      const value = interaction.options.getString("region", true);
+      await inter.reply(ephemeral("Канал удалён"));
+      break;
+    }
+    case "region": {
+      const value = inter.options.getString("region", true);
       await channel.setRTCRegion(value === "auto" ? null : value);
-      await interaction.reply({
-        content: `Регион канала установлен: ${value}`,
-        flags: MessageFlags.Ephemeral,
-      });
-    } else {
-      const id = interaction.options.getString("user", true);
-      const member = await interaction.guild?.members
-        .fetch(id)
-        .catch(() => null);
-      if (!member) {
-        await interaction.reply({
-          content: "Пользователь не найден",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      if (sub === "invite") {
-        await channel.permissionOverwrites.edit(member, { Connect: true });
-        await interaction.reply({
-          content: `Пользователь приглашён: ${member}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else if (sub === "kick") {
-        if (member.voice.channelId !== channel.id) {
-          await interaction.reply({
-            content: "Пользователь не найден в канале",
-            flags: MessageFlags.Ephemeral,
-          });
-          return;
+      await inter.reply(ephemeral(`Регион канала установлен: ${value}`));
+      break;
+    }
+    default: {
+      const id = inter.options.getString("user", true);
+      const member = await inter.guild?.members.fetch(id).catch(() => null);
+      if (!member) return inter.reply(ephemeral("Пользователь не найден"));
+      switch (sub) {
+        case "invite":
+          await channel.permissionOverwrites.edit(member, { Connect: true });
+          await inter.reply(
+            ephemeral(`Пользователь приглашён: ${member}`)
+          );
+          break;
+        case "kick":
+          if (member.voice.channelId !== channel.id)
+            return inter.reply(ephemeral("Пользователь не найден в канале"));
+          await member.voice.disconnect();
+          await inter.reply(ephemeral(`Пользователь выгнан: ${member}`));
+          break;
+        case "block":
+          await channel.permissionOverwrites.edit(member, { Connect: false });
+          await inter.reply(ephemeral(`Пользователь заблокирован: ${member}`));
+          break;
+        case "unblock":
+          await channel.permissionOverwrites.delete(member);
+          await inter.reply(
+            ephemeral(`Пользователь разблокирован: ${member}`)
+          );
+          break;
+        case "addtrusted": {
+          const set = trustedUsers.get(channel.id) ?? new Set();
+          set.add(id);
+          trustedUsers.set(channel.id, set);
+          await inter.reply(ephemeral("Доверенный пользователь добавлен"));
+          break;
         }
-        await member.voice.disconnect();
-        await interaction.reply({
-          content: `Пользователь выгнан: ${member}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else if (sub === "block") {
-        await channel.permissionOverwrites.edit(member, { Connect: false });
-        await interaction.reply({
-          content: `Пользователь заблокирован: ${member}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else if (sub === "unblock") {
-        await channel.permissionOverwrites.delete(member);
-        await interaction.reply({
-          content: `Пользователь разблокирован: ${member}`,
-          flags: MessageFlags.Ephemeral,
-        });
-      } else if (sub === "addtrusted") {
-        const set = trustedUsers.get(channel.id) ?? new Set();
-        set.add(id);
-        trustedUsers.set(channel.id, set);
-        await interaction.reply({
-          content: "Доверенный пользователь добавлен",
-          flags: MessageFlags.Ephemeral,
-        });
-      } else if (sub === "removetrusted") {
-        trustedUsers.get(channel.id)?.delete(id);
-        await interaction.reply({
-          content: "Доверенный пользователь удалён",
-          flags: MessageFlags.Ephemeral,
-        });
-      } else if (sub === "transfer") {
-        channelOwners.set(channel.id, id);
-        const set = trustedUsers.get(channel.id) ?? new Set();
-        set.add(id);
-        trustedUsers.set(channel.id, set);
-        await interaction.reply({
-          content: "Лидерство передано",
-          flags: MessageFlags.Ephemeral,
-        });
+        case "removetrusted":
+          trustedUsers.get(channel.id)?.delete(id);
+          await inter.reply(ephemeral("Доверенный пользоватеь удалён"));
+          break;
+        case "transfer": {
+          channelOwners.set(channel.id, id);
+          const set = trustedUsers.get(channel.id) ?? new Set();
+          set.add(id);
+          trustedUsers.set(channel.id, set);
+          await inter.reply(ephemeral("Лидерство передано"));
+          break;
+        }
       }
     }
-  } else if (interaction.isButton()) {
-    if (interaction.customId === "toggle_privacy") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel) {
-        await interaction.reply({
-          content: "Вы должны находиться в своём временном канале",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      if (!isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const everyone = interaction.guild!.roles.everyone;
+  }
+}
+
+async function handleButton(inter: ButtonInteraction) {
+  switch (inter.customId) {
+    case "toggle_privacy": {
+      const channel = await withChannel(inter);
+      if (!channel) break;
+      const everyone = inter.guild!.roles.everyone;
       const overwrite = channel.permissionOverwrites.resolve(everyone.id);
       const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
       await channel.permissionOverwrites.edit(everyone, {
         Connect: isPrivate ? null : false,
       });
-      const lockName = formatChannelName(channel.id, !isPrivate);
-      await channel.setName(lockName);
-      await interaction.reply({
-        content: isPrivate
-          ? "Канал теперь публичный"
-          : "Канал теперь приватный",
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (interaction.customId === "rename") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      await channel.setName(formatChannelName(channel.id, !isPrivate));
+      await inter.reply(
+        ephemeral(
+          isPrivate ? "Канал теперь публичный" : "Канал теперь приватный"
+        )
+      );
+      break;
+    }
+    case "rename": {
+      const channel = await withChannel(inter);
+      if (!channel) break;
       const modal = new ModalBuilder()
         .setCustomId("rename_modal")
-        .setTitle("Переименовать канал");
-
-      const input = new TextInputBuilder()
-        .setCustomId("name_input")
-        .setLabel("Новое название")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      modal.addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(input)
-      );
-      await interaction.showModal(modal);
-    } else if (interaction.customId === "set_limit") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+        .setTitle("Переименовать канал")
+        .addComponents(
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("name_input")
+              .setLabel("Новое название")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          )
+        );
+      await inter.showModal(modal);
+      break;
+    }
+    case "set_limit": {
+      const channel = await withChannel(inter);
+      if (!channel) break;
       const modal = new ModalBuilder()
         .setCustomId("limit_modal")
-        .setTitle("Лимит пользователей");
-
-      const input = new TextInputBuilder()
-        .setCustomId("limit_input")
-        .setLabel("Число от 0 до 99")
-        .setStyle(TextInputStyle.Short)
-        .setRequired(true);
-
-      modal.addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(input)
-      );
-      await interaction.showModal(modal);
-    } else if (interaction.customId === "change_region") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const menu =
-        new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
-          new StringSelectMenuBuilder()
-            .setCustomId("region_select")
-            .setPlaceholder("Выберите регион")
-            .addOptions(
-              { label: "Авто", value: "auto" },
-              { label: "Вротдам", value: "rotterdam" },
-              { label: "Сингапур", value: "singapore" },
-              { label: "Токио-Дрифт", value: "japan" }
-            )
+        .setTitle("Лимит пользователей")
+        .addComponents(
+          new ActionRowBuilder<TextInputBuilder>().addComponents(
+            new TextInputBuilder()
+              .setCustomId("limit_input")
+              .setLabel("Число от 0 до 99")
+              .setStyle(TextInputStyle.Short)
+              .setRequired(true)
+          )
         );
-      await interaction.reply({
+      await inter.showModal(modal);
+      break;
+    }
+    case "change_region": {
+      const channel = await withChannel(inter);
+      if (!channel) break;
+      const menu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+        new StringSelectMenuBuilder()
+          .setCustomId("region_select")
+          .setPlaceholder("Выберите регион")
+          .addOptions(
+            { label: "Авто", value: "auto" },
+            { label: "Вротдам", value: "rotterdam" },
+            { label: "Сингапур", value: "singapore" },
+            { label: "Токио-Дрифт", value: "japan" }
+          )
+      );
+      await inter.reply({
         content: "Выберите регион",
         components: [menu],
-        flags: MessageFlags.Ephemeral,
+        ephemeral: true,
       });
-    } else if (interaction.customId === "invite_user") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      break;
+    }
+    case "invite_user":
+    case "kick_user":
+    case "block_user":
+    case "unblock_user":
+    case "add_trusted":
+    case "remove_trusted":
+    case "transfer_leader": {
+      const channel = await withChannel(inter);
+      if (!channel) break;
+      const ids: Record<string, string> = {
+        invite_user: "invite_select",
+        kick_user: "kick_select",
+        block_user: "block_select",
+        unblock_user: "unblock_select",
+        add_trusted: "trusted_add_select",
+        remove_trusted: "trusted_remove_select",
+        transfer_leader: "transfer_select",
+      };
       const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
         new UserSelectMenuBuilder()
-          .setCustomId("invite_select")
+          .setCustomId(ids[inter.customId])
           .setPlaceholder("Выберите пользователя")
           .setMaxValues(1)
           .setMinValues(1)
       );
-      await interaction.reply({
+      await inter.reply({
         content: "Выберите пользователя",
         components: [menu],
-        flags: MessageFlags.Ephemeral,
+        ephemeral: true,
       });
-    } else if (interaction.customId === "kick_user") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("kick_select")
-          .setPlaceholder("Выберите пользователя")
-          .setMaxValues(1)
-          .setMinValues(1)
-      );
-      await interaction.reply({
-        content: "Выберите пользователя",
-        components: [menu],
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (interaction.customId === "block_user") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("block_select")
-          .setPlaceholder("Выберите пользователя")
-          .setMaxValues(1)
-          .setMinValues(1)
-      );
-      await interaction.reply({
-        content: "Выберите пользователя",
-        components: [menu],
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (interaction.customId === "unblock_user") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("unblock_select")
-          .setPlaceholder("Выберите пользователя")
-          .setMaxValues(1)
-          .setMinValues(1)
-      );
-      await interaction.reply({
-        content: "Выберите пользователя",
-        components: [menu],
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (interaction.customId === "add_trusted") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("trusted_add_select")
-          .setPlaceholder("Выберите пользователя")
-          .setMaxValues(1)
-          .setMinValues(1)
-      );
-      await interaction.reply({
-        content: "Выберите пользователя",
-        components: [menu],
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (interaction.customId === "remove_trusted") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("trusted_remove_select")
-          .setPlaceholder("Выберите пользователя")
-          .setMaxValues(1)
-          .setMinValues(1)
-      );
-      await interaction.reply({
-        content: "Выберите пользователя",
-        components: [menu],
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (interaction.customId === "transfer_leader") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Недостаточно прав",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
-      const menu = new ActionRowBuilder<UserSelectMenuBuilder>().addComponents(
-        new UserSelectMenuBuilder()
-          .setCustomId("transfer_select")
-          .setPlaceholder("Выберите пользователя")
-          .setMaxValues(1)
-          .setMinValues(1)
-      );
-      await interaction.reply({
-        content: "Выберите пользователя",
-        components: [menu],
-        flags: MessageFlags.Ephemeral,
-      });
-    } else if (interaction.customId === "delete_channel") {
-      const channel = getUserTempChannel(interaction);
-      if (!channel || !isManager(channel.id, interaction.user.id)) {
-        await interaction.reply({
-          content: "Вы должны находиться в своём временном канале",
-          flags: MessageFlags.Ephemeral,
-        });
-        return;
-      }
+      break;
+    }
+    case "delete_channel": {
+      const channel = await withChannel(inter);
+      if (!channel) break;
       await channel.delete();
       createdChannels.delete(channel.id);
       channelOwners.delete(channel.id);
       trustedUsers.delete(channel.id);
       const number = channelNumbers.get(channel.id);
-      if (number !== undefined) {
-        availableNumbers.add(number);
-      }
+      if (number !== undefined) availableNumbers.add(number);
       channelNumbers.delete(channel.id);
       channelNames.delete(channel.id);
-      await interaction.reply({
-        content: "Канал удалён",
-        flags: MessageFlags.Ephemeral,
-      });
+      await inter.reply(ephemeral("Канал удалён"));
+      break;
     }
-  } else if (
-    interaction.isStringSelectMenu() &&
-    interaction.customId === "region_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const value = interaction.values[0];
-    await channel.setRTCRegion(value === "auto" ? null : value);
-    await interaction.reply({
-      content: `Регион канала установлен: ${value}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.type === InteractionType.ModalSubmit &&
-    interaction.customId === "rename_modal"
-  ) {
-    await interaction.deferReply({ ephemeral: true });
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.editReply({
-        content: "Вы должны находиться в своём временном канале",
-      });
-      return;
-    }
-    const name = interaction.fields.getTextInputValue("name_input");
-    channelNames.set(channel.id, name);
-    const everyone = interaction.guild!.roles.everyone;
-    const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-    const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
-    await channel.setName(formatChannelName(channel.id, isPrivate));
-    await interaction.editReply({
-      content: `Название канала изменено на ${name}`,
-    });
-  } else if (
-    interaction.type === InteractionType.ModalSubmit &&
-    interaction.customId === "limit_modal"
-  ) {
-    await interaction.deferReply({ ephemeral: true });
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.editReply({
-        content: "Вы должны находиться в своём временном канале",
-      });
-      return;
-    }
-    const limit = parseInt(
-      interaction.fields.getTextInputValue("limit_input"),
-      10
-    );
-    if (isNaN(limit) || limit < 0 || limit > 99) {
-      await interaction.editReply({ content: "Неверное значение" });
-      return;
-    }
-    await channel.setUserLimit(limit);
-    await interaction.editReply({ content: `Лимит установлен: ${limit}` });
-  } else if (
-    interaction.isUserSelectMenu() &&
-    interaction.customId === "invite_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const id = interaction.values[0];
-    const member = await interaction.guild?.members.fetch(id).catch(() => null);
-    if (!member) {
-      await interaction.reply({
-        content: "Пользователь не найден",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    await channel.permissionOverwrites.edit(member, { Connect: true });
-    await interaction.reply({
-      content: `Пользователь приглашён: ${member}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isUserSelectMenu() &&
-    interaction.customId === "kick_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const id = interaction.values[0];
-    const member = await interaction.guild?.members.fetch(id).catch(() => null);
-    if (!member || member.voice.channelId !== channel.id) {
-      await interaction.reply({
-        content: "Пользователь не найден в канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    await member.voice.disconnect();
-    await interaction.reply({
-      content: `Пользователь выгнан: ${member}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isUserSelectMenu() &&
-    interaction.customId === "block_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const id = interaction.values[0];
-    const member = await interaction.guild?.members.fetch(id).catch(() => null);
-    if (!member) {
-      await interaction.reply({
-        content: "Пользователь не найден",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    await channel.permissionOverwrites.edit(member, { Connect: false });
-    await interaction.reply({
-      content: `Пользователь заблокирован: ${member}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isUserSelectMenu() &&
-    interaction.customId === "unblock_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const id = interaction.values[0];
-    const member = await interaction.guild?.members.fetch(id).catch(() => null);
-    if (!member) {
-      await interaction.reply({
-        content: "Пользователь не найден",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    await channel.permissionOverwrites.delete(member);
-    await interaction.reply({
-      content: `Пользователь разблокирован: ${member}`,
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isUserSelectMenu() &&
-    interaction.customId === "trusted_add_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const id = interaction.values[0];
-    const set = trustedUsers.get(channel.id) ?? new Set();
-    set.add(id);
-    trustedUsers.set(channel.id, set);
-    await interaction.reply({
-      content: "Доверенный пользователь добавлен",
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isUserSelectMenu() &&
-    interaction.customId === "trusted_remove_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const id = interaction.values[0];
-    trustedUsers.get(channel.id)?.delete(id);
-    await interaction.reply({
-      content: "Доверенный пользователь удалён",
-      flags: MessageFlags.Ephemeral,
-    });
-  } else if (
-    interaction.isUserSelectMenu() &&
-    interaction.customId === "transfer_select"
-  ) {
-    const channel = getUserTempChannel(interaction);
-    if (!channel) {
-      await interaction.reply({
-        content: "Вы должны находиться в своём временном канале",
-        flags: MessageFlags.Ephemeral,
-      });
-      return;
-    }
-    const id = interaction.values[0];
-    channelOwners.set(channel.id, id);
-    const set = trustedUsers.get(channel.id) ?? new Set();
-    set.add(id);
-    trustedUsers.set(channel.id, set);
-    await interaction.reply({
-      content: "Лидерство передано",
-      flags: MessageFlags.Ephemeral,
-    });
   }
 }
+
+async function handleRegionSelect(inter: StringSelectMenuInteraction) {
+  if (inter.customId !== "region_select") return;
+  const channel = await withChannel(inter, false);
+  if (!channel) return;
+  const value = inter.values[0];
+  await channel.setRTCRegion(value === "auto" ? null : value);
+  await inter.reply(ephemeral(`Регион канала установлен: ${value}`));
+}
+
+async function handleModal(inter: ModalSubmitInteraction) {
+  await inter.deferReply({ ephemeral: true });
+  const channel = getUserTempChannel(inter);
+  if (!channel)
+    return inter.editReply({
+      content: "Вы должны находиться в своём временном канале",
+    });
+  switch (inter.customId) {
+    case "rename_modal": {
+      const name = inter.fields.getTextInputValue("name_input");
+      channelNames.set(channel.id, name);
+      const everyone = inter.guild!.roles.everyone;
+      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+      const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
+      await channel.setName(formatChannelName(channel.id, isPrivate));
+      await inter.editReply({
+        content: `Название канала изменено на ${name}`,
+      });
+      break;
+    }
+    case "limit_modal": {
+      const limit = parseInt(
+        inter.fields.getTextInputValue("limit_input"),
+        10
+      );
+      if (isNaN(limit) || limit < 0 || limit > 99)
+        return inter.editReply({ content: "Неверное значение" });
+      await channel.setUserLimit(limit);
+      await inter.editReply({ content: `Лимит установлен: ${limit}` });
+      break;
+    }
+  }
+}
+
+async function handleUserSelect(inter: UserSelectMenuInteraction) {
+  const channel = await withChannel(inter);
+  if (!channel) return;
+  const id = inter.values[0];
+  const member = await inter.guild?.members.fetch(id).catch(() => null);
+  if (!member) return inter.reply(ephemeral("Пользователь не найден"));
+
+  switch (inter.customId) {
+    case "invite_select":
+      await channel.permissionOverwrites.edit(member, { Connect: true });
+      await inter.reply(ephemeral(`Пользователь приглашён: ${member}`));
+      break;
+    case "kick_select":
+      if (member.voice.channelId !== channel.id)
+        return inter.reply(ephemeral("Пользователь не найден в канале"));
+      await member.voice.disconnect();
+      await inter.reply(ephemeral(`Пользователь выгнан: ${member}`));
+      break;
+    case "block_select":
+      await channel.permissionOverwrites.edit(member, { Connect: false });
+      await inter.reply(ephemeral(`Пользователь заблокирован: ${member}`));
+      break;
+    case "unblock_select":
+      await channel.permissionOverwrites.delete(member);
+      await inter.reply(ephemeral(`Пользователь разблокирован: ${member}`));
+      break;
+    case "trusted_add_select": {
+      const set = trustedUsers.get(channel.id) ?? new Set();
+      set.add(id);
+      trustedUsers.set(channel.id, set);
+      await inter.reply(ephemeral("Доверенный пользователь добавлен"));
+      break;
+    }
+    case "trusted_remove_select":
+      trustedUsers.get(channel.id)?.delete(id);
+      await inter.reply(ephemeral("Доверенный пользователь удалён"));
+      break;
+    case "transfer_select": {
+      channelOwners.set(channel.id, id);
+      const set = trustedUsers.get(channel.id) ?? new Set();
+      set.add(id);
+      trustedUsers.set(channel.id, set);
+      await inter.reply(ephemeral("Лидерство передано"));
+      break;
+    }
+  }
+}
+
+export async function handleInteraction(interaction: Interaction) {
+  if (interaction.isAutocomplete() && interaction.commandName === "voice")
+    return handleAutocomplete(interaction);
+  if (interaction.isChatInputCommand())
+    switch (interaction.commandName) {
+      case "setup":
+        return handleSetup(interaction);
+      case "interface":
+        return handleInterface(interaction);
+      case "voice":
+        return handleVoice(interaction);
+    }
+  if (interaction.isButton()) return handleButton(interaction);
+  if (interaction.isStringSelectMenu()) return handleRegionSelect(interaction);
+  if (interaction.isModalSubmit()) return handleModal(interaction);
+  if (interaction.isUserSelectMenu()) return handleUserSelect(interaction);
+}
+
