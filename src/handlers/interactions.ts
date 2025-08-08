@@ -1,6 +1,5 @@
 import {
   ActionRowBuilder,
-  AutocompleteInteraction,
   ButtonBuilder,
   ButtonInteraction,
   ButtonStyle,
@@ -96,16 +95,6 @@ async function sendInterfaceMessage(channel: TextChannel) {
   await channel.send({ embeds: [embed], components: rows });
 }
 
-async function handleAutocomplete(inter: AutocompleteInteraction) {
-  const focused = inter.options.getFocused(true);
-  if (focused.name !== "user") return inter.respond([]);
-  const channel = getUserTempChannel(inter);
-  const members = channel ? [...channel.members.values()] : [];
-  await inter.respond(
-    members.slice(0, 25).map((m) => ({ name: m.displayName, value: m.id }))
-  );
-}
-
 async function handleSetup(inter: ChatInputCommandInteraction) {
   if (!inter.guild)
     return inter.reply(
@@ -194,114 +183,6 @@ async function withChannel(
     return null;
   }
   return channel;
-}
-
-async function handleVoice(inter: ChatInputCommandInteraction) {
-  const channel = await withChannel(inter);
-  if (!channel) return;
-
-  const sub = inter.options.getSubcommand();
-  switch (sub) {
-    case "privacy": {
-      const everyone = inter.guild!.roles.everyone;
-      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-      const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
-      await channel.permissionOverwrites.edit(everyone, {
-        Connect: isPrivate ? null : false,
-      });
-      await channel.setName(formatChannelName(channel.id, !isPrivate));
-      await inter.reply(
-        ephemeral(
-          isPrivate ? "Канал теперь публичный" : "Канал теперь приватный"
-        )
-      );
-      break;
-    }
-    case "rename": {
-      const name = inter.options.getString("name", true);
-      channelNames.set(channel.id, name);
-      const everyone = inter.guild!.roles.everyone;
-      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-      const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
-      await channel.setName(formatChannelName(channel.id, isPrivate));
-      await inter.reply(ephemeral(`Название канала изменено на ${name}`));
-      break;
-    }
-    case "limit": {
-      const limit = inter.options.getInteger("limit", true);
-      if (limit < 0 || limit > 99)
-        return inter.reply(ephemeral("Неверное значение"));
-      await channel.setUserLimit(limit);
-      await inter.reply(ephemeral(`Лимит установлен: ${limit}`));
-      break;
-    }
-    case "delete": {
-      await channel.delete();
-      createdChannels.delete(channel.id);
-      channelOwners.delete(channel.id);
-      trustedUsers.delete(channel.id);
-      const number = channelNumbers.get(channel.id);
-      if (number !== undefined) availableNumbers.add(number);
-      channelNumbers.delete(channel.id);
-      channelNames.delete(channel.id);
-      await inter.reply(ephemeral("Канал удалён"));
-      break;
-    }
-    case "region": {
-      const value = inter.options.getString("region", true);
-      await channel.setRTCRegion(value === "auto" ? null : value);
-      await inter.reply(ephemeral(`Регион канала установлен: ${value}`));
-      break;
-    }
-    default: {
-      const id = inter.options.getString("user", true);
-      const member = await inter.guild?.members.fetch(id).catch(() => null);
-      if (!member) return inter.reply(ephemeral("Пользователь не найден"));
-      switch (sub) {
-        case "invite":
-          await channel.permissionOverwrites.edit(member, { Connect: true });
-          await inter.reply(
-            ephemeral(`Пользователь приглашён: ${member}`)
-          );
-          break;
-        case "kick":
-          if (member.voice.channelId !== channel.id)
-            return inter.reply(ephemeral("Пользователь не найден в канале"));
-          await member.voice.disconnect();
-          await inter.reply(ephemeral(`Пользователь выгнан: ${member}`));
-          break;
-        case "block":
-          await channel.permissionOverwrites.edit(member, { Connect: false });
-          await inter.reply(ephemeral(`Пользователь заблокирован: ${member}`));
-          break;
-        case "unblock":
-          await channel.permissionOverwrites.delete(member);
-          await inter.reply(
-            ephemeral(`Пользователь разблокирован: ${member}`)
-          );
-          break;
-        case "addtrusted": {
-          const set = trustedUsers.get(channel.id) ?? new Set();
-          set.add(id);
-          trustedUsers.set(channel.id, set);
-          await inter.reply(ephemeral("Доверенный пользователь добавлен"));
-          break;
-        }
-        case "removetrusted":
-          trustedUsers.get(channel.id)?.delete(id);
-          await inter.reply(ephemeral("Доверенный пользоватеь удалён"));
-          break;
-        case "transfer": {
-          channelOwners.set(channel.id, id);
-          const set = trustedUsers.get(channel.id) ?? new Set();
-          set.add(id);
-          trustedUsers.set(channel.id, set);
-          await inter.reply(ephemeral("Лидерство передано"));
-          break;
-        }
-      }
-    }
-  }
 }
 
 async function handleButton(inter: ButtonInteraction) {
@@ -521,16 +402,12 @@ async function handleUserSelect(inter: UserSelectMenuInteraction) {
 }
 
 export async function handleInteraction(interaction: Interaction) {
-  if (interaction.isAutocomplete() && interaction.commandName === "voice")
-    return handleAutocomplete(interaction);
   if (interaction.isChatInputCommand())
     switch (interaction.commandName) {
       case "setup":
         return handleSetup(interaction);
       case "interface":
         return handleInterface(interaction);
-      case "voice":
-        return handleVoice(interaction);
     }
   if (interaction.isButton()) return handleButton(interaction);
   if (interaction.isStringSelectMenu()) return handleRegionSelect(interaction);
