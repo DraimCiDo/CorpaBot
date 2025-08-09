@@ -1,3 +1,5 @@
+// Логика работы с голосовыми каналами: создание, удаление,
+// переименование и проверка прав пользователей.
 import {
   CategoryChannel,
   ChannelType,
@@ -19,8 +21,10 @@ import {
   LOCK_CLOSED,
 } from "./constants";
 
+// Счётчик, чтобы выдавать новым каналам уникальные номера.
 let channelCounter = 0;
 
+// Формирует отображаемое имя канала с учётом приватности и номера.
 export function formatChannelName(
   channelId: string,
   isPrivate: boolean
@@ -32,6 +36,8 @@ export function formatChannelName(
   return `[${lock}] ${base}${suffix}`;
 }
 
+// Проверяет, имеет ли пользователь право управлять каналом
+// (является владельцем или доверенным).
 export function isManager(channelId: string, userId: string): boolean {
   return (
     channelOwners.get(channelId) === userId ||
@@ -39,6 +45,7 @@ export function isManager(channelId: string, userId: string): boolean {
   );
 }
 
+// Возвращает временный канал пользователя, если он в нём находится.
 export function getUserTempChannel(
   interaction: Interaction
 ): VoiceChannel | null {
@@ -50,9 +57,13 @@ export function getUserTempChannel(
   return null;
 }
 
+// Основной обработчик изменений голосовых состояний пользователей.
+// Создаёт новые каналы при входе в "Создать канал" и удаляет пустые.
 export async function handleVoiceStateUpdate(oldState: any, newState: any) {
+  // Пользователь зашёл в канал для создания временной комнаты.
   if (newState.channel && newState.channel.name === CREATE_CHANNEL_NAME) {
     const category = newState.channel.parent as CategoryChannel | null;
+    // Берём свободный номер или увеличиваем счётчик.
     const number =
       availableNumbers.size > 0
         ? Math.min(...availableNumbers)
@@ -60,6 +71,7 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
     if (availableNumbers.size > 0) {
       availableNumbers.delete(number);
     }
+    // Создаём новый голосовой канал в той же категории.
     const newChannel = (await newState.guild.channels.create({
       name: `[${LOCK_OPEN}] ${TEMP_CHANNEL_PREFIX}[#${number}]`,
       type: ChannelType.GuildVoice,
@@ -70,11 +82,13 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
     trustedUsers.set(newChannel.id, new Set([newState.id]));
     channelNumbers.set(newChannel.id, number);
     channelNames.set(newChannel.id, TEMP_CHANNEL_PREFIX);
-    await newState.setChannel(newChannel);
+    await newState.setChannel(newChannel); // перенаправляем пользователя
   }
 
+  // Обработка выхода пользователя из временного канала.
   if (oldState.channel && createdChannels.has(oldState.channel.id)) {
     if (oldState.channel.members.size === 0) {
+      // Если канал опустел — удаляем и освобождаем ресурсы.
       createdChannels.delete(oldState.channel.id);
       channelOwners.delete(oldState.channel.id);
       trustedUsers.delete(oldState.channel.id);
@@ -87,9 +101,10 @@ export async function handleVoiceStateUpdate(oldState: any, newState: any) {
       try {
         await oldState.channel.delete();
       } catch {
-        // channel might already be deleted
+        // канал мог быть удалён вручную
       }
     } else {
+      // Если владелец вышел, назначаем нового владельца (первого в списке).
       const ownerId = channelOwners.get(oldState.channel.id);
       if (ownerId === oldState.id) {
         const [first] = oldState.channel.members.values();

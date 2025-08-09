@@ -1,3 +1,5 @@
+// Обработчики slash-команд, кнопок и других взаимодействий Discord.
+// Здесь реализована логика управления временными каналами через интерфейс.
 import {
   ActionRowBuilder,
   ButtonBuilder,
@@ -46,12 +48,15 @@ import {
 } from "../state";
 import { isManager, getUserTempChannel, formatChannelName } from "../voice";
 
+// Вспомогательная функция для отправки скрытых (ephemeral) сообщений.
 const ephemeral = (content: string) => ({
   content,
   ephemeral: true,
 });
 
+// Отправляет в текстовый канал сообщение с кнопками управления.
 async function sendInterfaceMessage(channel: TextChannel) {
+  // Встраиваемое сообщение с кратким описанием.
   const embed = new EmbedBuilder()
     .setTitle("Настройка временного канала")
     .setColor(0x00ff00)
@@ -62,6 +67,7 @@ async function sendInterfaceMessage(channel: TextChannel) {
       "https://cdn.discordapp.com/attachments/1148739831594242211/1381962774590132234/NEUKRAL2004.png?ex=68569ba1&is=68554a21&hm=c258a72a5a3406357054ede7d23ad573639576ea9a00338a745bbd869d947073&"
     );
 
+  // Удобный конструктор строк кнопок.
   const makeRow = (
     btns: [string, string, ButtonStyle][]
   ) =>
@@ -71,6 +77,7 @@ async function sendInterfaceMessage(channel: TextChannel) {
       )
     );
 
+  // Три строки кнопок управления каналом.
   const rows = [
     makeRow([
       ["toggle_privacy", ICON_PRIVACY, ButtonStyle.Primary],
@@ -96,13 +103,16 @@ async function sendInterfaceMessage(channel: TextChannel) {
 }
 
 async function handleSetup(inter: ChatInputCommandInteraction) {
+  // Проверяем, что команда вызвана на сервере.
   if (!inter.guild)
     return inter.reply(
       ephemeral("Эту команду можно использовать только на сервере")
     );
+  // Требуются права на управление каналами.
   if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
     return inter.reply(ephemeral("Недостаточно прав для выполнения команды"));
 
+  // Если канал "Создать канал" уже есть, сообщаем об этом.
   const existing = inter.guild.channels.cache.find(
     (c: any) =>
       c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
@@ -110,6 +120,7 @@ async function handleSetup(inter: ChatInputCommandInteraction) {
   if (existing)
     return inter.reply(ephemeral(`Канал уже существует: ${existing}`));
 
+  // Ищем или создаём категорию для голосовых каналов.
   const category =
     (inter.guild.channels.cache.find(
       (c: any) =>
@@ -120,6 +131,7 @@ async function handleSetup(inter: ChatInputCommandInteraction) {
       type: ChannelType.GuildCategory,
     }));
 
+  // Ищем или создаём текстовый канал управления.
   const interfaceChannel =
     (inter.guild.channels.cache.find(
       (c: any) =>
@@ -131,15 +143,18 @@ async function handleSetup(inter: ChatInputCommandInteraction) {
       parent: category.id,
     })) as TextChannel);
 
+  // Убеждаемся, что текстовый канал находится в нужной категории.
   if (interfaceChannel.parentId !== category.id)
     await interfaceChannel.setParent(category.id);
 
+  // Создаём голосовой канал "Создать канал".
   const channel = await inter.guild.channels.create({
     name: CREATE_CHANNEL_NAME,
     type: ChannelType.GuildVoice,
     parent: category.id,
   });
 
+  // Отправляем сообщение-интерфейс и уведомляем пользователя.
   await sendInterfaceMessage(interfaceChannel);
   await inter.reply(
     ephemeral(`Создан канал ${channel} и ${interfaceChannel}`)
@@ -147,6 +162,7 @@ async function handleSetup(inter: ChatInputCommandInteraction) {
 }
 
 async function handleInterface(inter: ChatInputCommandInteraction) {
+  // Аналогичные проверки, что команда выполняется на сервере администратором.
   if (!inter.guild)
     return inter.reply(
       ephemeral("Эту команду можно использовать только на сервере")
@@ -154,6 +170,7 @@ async function handleInterface(inter: ChatInputCommandInteraction) {
   if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
     return inter.reply(ephemeral("Недостаточно прав для выполнения команды"));
 
+  // Находим канал "Интерфейс" и переотправляем сообщение.
   const interfaceChannel = inter.guild.channels.cache.find(
     (c: any) =>
       c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
@@ -173,6 +190,7 @@ async function withChannel(
     | UserSelectMenuInteraction,
   requireManager = true
 ) {
+  // Определяем временный канал пользователя и проверяем его права.
   const channel = getUserTempChannel(inter);
   if (!channel) {
     await inter.reply(ephemeral("Вы должны находиться в своём временном канале"));
@@ -186,8 +204,10 @@ async function withChannel(
 }
 
 async function handleButton(inter: ButtonInteraction) {
+  // Обработка нажатий на кнопки из интерфейсного сообщения.
   switch (inter.customId) {
     case "toggle_privacy": {
+      // Переключение приватности канала.
       const channel = await withChannel(inter);
       if (!channel) break;
       const everyone = inter.guild!.roles.everyone;
@@ -205,6 +225,7 @@ async function handleButton(inter: ButtonInteraction) {
       break;
     }
     case "rename": {
+      // Открываем модальное окно для переименования.
       const channel = await withChannel(inter);
       if (!channel) break;
       const modal = new ModalBuilder()
@@ -223,6 +244,7 @@ async function handleButton(inter: ButtonInteraction) {
       break;
     }
     case "set_limit": {
+      // Модальное окно для установки лимита пользователей.
       const channel = await withChannel(inter);
       if (!channel) break;
       const modal = new ModalBuilder()
@@ -241,6 +263,7 @@ async function handleButton(inter: ButtonInteraction) {
       break;
     }
     case "change_region": {
+      // Выбор региона канала через выпадающее меню.
       const channel = await withChannel(inter);
       if (!channel) break;
       const menu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
@@ -268,6 +291,7 @@ async function handleButton(inter: ButtonInteraction) {
     case "add_trusted":
     case "remove_trusted":
     case "transfer_leader": {
+      // Общий сценарий: показываем меню выбора пользователя.
       const channel = await withChannel(inter);
       if (!channel) break;
       const ids: Record<string, string> = {
@@ -294,6 +318,7 @@ async function handleButton(inter: ButtonInteraction) {
       break;
     }
     case "delete_channel": {
+      // Удаление текущего канала и очистка состояния.
       const channel = await withChannel(inter);
       if (!channel) break;
       await channel.delete();
@@ -311,6 +336,7 @@ async function handleButton(inter: ButtonInteraction) {
 }
 
 async function handleRegionSelect(inter: StringSelectMenuInteraction) {
+  // Изменение региона RTC после выбора в меню.
   if (inter.customId !== "region_select") return;
   const channel = await withChannel(inter, false);
   if (!channel) return;
@@ -320,6 +346,7 @@ async function handleRegionSelect(inter: StringSelectMenuInteraction) {
 }
 
 async function handleModal(inter: ModalSubmitInteraction) {
+  // Обработка модальных окон после подтверждения пользователем.
   await inter.deferReply({ ephemeral: true });
   const channel = getUserTempChannel(inter);
   if (!channel)
@@ -328,6 +355,7 @@ async function handleModal(inter: ModalSubmitInteraction) {
     });
   switch (inter.customId) {
     case "rename_modal": {
+      // Применяем новое имя канала.
       const name = inter.fields.getTextInputValue("name_input");
       channelNames.set(channel.id, name);
       const everyone = inter.guild!.roles.everyone;
@@ -340,6 +368,7 @@ async function handleModal(inter: ModalSubmitInteraction) {
       break;
     }
     case "limit_modal": {
+      // Устанавливаем лимит пользователей для канала.
       const limit = parseInt(
         inter.fields.getTextInputValue("limit_input"),
         10
@@ -354,6 +383,7 @@ async function handleModal(inter: ModalSubmitInteraction) {
 }
 
 async function handleUserSelect(inter: UserSelectMenuInteraction) {
+  // Пользователь выбран из меню; выполняем соответствующее действие.
   const channel = await withChannel(inter);
   if (!channel) return;
   const id = inter.values[0];
@@ -402,6 +432,7 @@ async function handleUserSelect(inter: UserSelectMenuInteraction) {
 }
 
 export async function handleInteraction(interaction: Interaction) {
+  // Точка входа: определяем тип взаимодействия и передаём в нужный обработчик.
   if (interaction.isChatInputCommand())
     switch (interaction.commandName) {
       case "setup":
