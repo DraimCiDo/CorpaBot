@@ -14,4 +14,10 @@ export async function registerCommands(client: Client): Promise<void> {
     name: "interface",
     description: "Обновляет сообщение в канале Интерфейс",
   });
+
+  await client.application?.commands.create({
+  name: "debug",
+  description: "Показать отладочную информацию о временном канале",
+  });
+
 }

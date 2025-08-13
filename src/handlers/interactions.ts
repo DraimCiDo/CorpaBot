@@ -40,12 +40,9 @@ import {
   ICON_TRANSFER,
 } from "../constants";
 import {
-  createdChannels,
-  channelOwners,
-  trustedUsers,
-  channelNumbers,
-  channelNames,
-  availableNumbers,
+  createdChannels, channelOwners, trustedUsers,
+  channelNumbers, channelNames, channelPrivates,
+  channelRtcRegion, channelUserLimit
 } from "../state";
 import {
   persistRename,
@@ -56,12 +53,14 @@ import {
   removeTrustedLocalAndDB,
 } from "../voice";
 import { isManager, getUserTempChannel, formatChannelName } from "../voice";
+import { info, warn } from "../logger";
 
 // Вспомогательная функция для отправки скрытых (ephemeral) сообщений.
 const ephemeral = (content: string) => ({
   content,
   flags: MessageFlags.Ephemeral as number,
 });
+
 
 // Отправляет в текстовый канал сообщение с кнопками управления.
 async function sendInterfaceMessage(channel: TextChannel) {
@@ -131,39 +130,32 @@ const ALLOWED_RTC_REGIONS = [
 
 // Обработчики команд и взаимодействий.
 async function handleSetup(inter: ChatInputCommandInteraction) {
-  // Проверяем, что команда вызвана на сервере.
-  if (!inter.guild)
-    return inter.reply(
-      ephemeral("Эту команду можно использовать только на сервере")
-    );
-  // Требуются права на управление каналами.
-  if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
-    return inter.reply(ephemeral("Недостаточно прав для выполнения команды"));
+  await inter.deferReply({ flags: MessageFlags.Ephemeral }); // ← ACK за ≤3с
 
-  // Если канал "Создать канал" уже есть, сообщаем об этом.
+  if (!inter.guild)
+    return inter.editReply("Эту команду можно использовать только на сервере");
+
+  if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
+    return inter.editReply("Недостаточно прав для выполнения команды");
+
   const existing = inter.guild.channels.cache.find(
-    (c: any) =>
-      c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
+    (c: any) => c.name === CREATE_CHANNEL_NAME && c.type === ChannelType.GuildVoice
   );
   if (existing)
-    return inter.reply(ephemeral(`Канал уже существует: ${existing}`));
+    return inter.editReply(`Канал уже существует: ${existing}`);
 
-  // Ищем или создаём категорию для голосовых каналов.
   const category =
     (inter.guild.channels.cache.find(
-      (c: any) =>
-        c.name === VOICE_CATEGORY_NAME && c.type === ChannelType.GuildCategory
+      (c: any) => c.name === VOICE_CATEGORY_NAME && c.type === ChannelType.GuildCategory
     ) as CategoryChannel) ||
     (await inter.guild.channels.create({
       name: VOICE_CATEGORY_NAME,
       type: ChannelType.GuildCategory,
     }));
 
-  // Ищем или создаём текстовый канал управления.
   const interfaceChannel =
     (inter.guild.channels.cache.find(
-      (c: any) =>
-        c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+      (c: any) => c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
     ) as TextChannel) ||
     ((await inter.guild.channels.create({
       name: INTERFACE_CHANNEL_NAME,
@@ -171,67 +163,68 @@ async function handleSetup(inter: ChatInputCommandInteraction) {
       parent: category.id,
     })) as TextChannel);
 
-  // Убеждаемся, что текстовый канал находится в нужной категории.
   if (interfaceChannel.parentId !== category.id)
     await interfaceChannel.setParent(category.id);
 
-  // Создаём голосовой канал "Создать канал".
   const channel = await inter.guild.channels.create({
     name: CREATE_CHANNEL_NAME,
     type: ChannelType.GuildVoice,
     parent: category.id,
   });
 
-  // Отправляем сообщение-интерфейс и уведомляем пользователя.
   await sendInterfaceMessage(interfaceChannel);
-  await inter.reply(
-    ephemeral(`Создан канал ${channel} и ${interfaceChannel}`)
-  );
+  await inter.editReply(`Создан канал ${channel} и ${interfaceChannel}`);
 }
 
 async function handleInterface(inter: ChatInputCommandInteraction) {
-  // Аналогичные проверки, что команда выполняется на сервере администратором.
-  if (!inter.guild)
-    return inter.reply(
-      ephemeral("Эту команду можно использовать только на сервере")
-    );
-  if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
-    return inter.reply(ephemeral("Недостаточно прав для выполнения команды"));
+  await inter.deferReply({ flags: MessageFlags.Ephemeral });
 
-  // Находим канал "Интерфейс" и переотправляем сообщение.
+  if (!inter.guild)
+    return inter.editReply("Эту команду можно использовать только на сервере");
+
+  if (!inter.memberPermissions?.has(PermissionFlagsBits.ManageChannels))
+    return inter.editReply("Недостаточно прав для выполнения команды");
+
   const interfaceChannel = inter.guild.channels.cache.find(
-    (c: any) =>
-      c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
+    (c: any) => c.name === INTERFACE_CHANNEL_NAME && c.type === ChannelType.GuildText
   ) as TextChannel | undefined;
+
   if (!interfaceChannel)
-    return inter.reply(ephemeral("Канал Интерфейс не найден"));
+    return inter.editReply("Канал Интерфейс не найден");
 
   await sendInterfaceMessage(interfaceChannel);
-  await inter.reply(ephemeral("Сообщение обновлено"));
+  await inter.editReply("Сообщение обновлено");
 }
 
 async function withChannel(
-  inter:
-    | ChatInputCommandInteraction
-    | ButtonInteraction
-    | StringSelectMenuInteraction
-    | UserSelectMenuInteraction,
+  inter: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction | UserSelectMenuInteraction,
   requireManager = true
 ) {
-  // Определяем временный канал пользователя и проверяем его права.
+  const member = inter.guild?.members.cache.get(inter.user.id);
+  const currentVC = member?.voice.channel;
   const channel = getUserTempChannel(inter);
+
+  info("withChannel check", {
+    inVoice: !!currentVC,
+    voiceId: currentVC?.id,
+    voiceName: currentVC?.name,
+    isTemp: channel ? true : false,
+    requireManager,
+  });
+
   if (!channel) {
     await inter.reply(ephemeral("Вы должны находиться в своём временном канале"));
     return null;
   }
   if (requireManager && !isManager(channel.id, inter.user.id)) {
+    warn("withChannel: not a manager", { channelId: channel.id, userId: inter.user.id });
     await inter.reply(ephemeral("Недостаточно прав"));
     return null;
   }
   return channel;
 }
-
 async function handleButton(inter: ButtonInteraction) {
+  info("button click", { customId: inter.customId, user: inter.user.id, guild: inter.guild?.id });
   // Обработка нажатий на кнопки из интерфейсного сообщения.
   switch (inter.customId) {
     case "toggle_privacy": {
@@ -294,6 +287,9 @@ async function handleButton(inter: ButtonInteraction) {
       // Выбор региона канала через выпадающее меню.
       const channel = await withChannel(inter);
       if (!channel) break;
+
+      await inter.deferReply({ flags: MessageFlags.Ephemeral });
+
       const menu = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
         new StringSelectMenuBuilder()
           .setCustomId("region_select")
@@ -305,11 +301,7 @@ async function handleButton(inter: ButtonInteraction) {
             { label: "Токио-Дрифт", value: "japan" }
           )
       );
-      await inter.reply({
-        content: "Выберите регион",
-        components: [menu],
-        flags: MessageFlags.Ephemeral,
-      });
+      await inter.editReply({ content: "Выберите регион", components: [menu] });
       break;
     }
     case "invite_user":
@@ -358,6 +350,7 @@ async function handleButton(inter: ButtonInteraction) {
 }
 
 async function handleRegionSelect(inter: StringSelectMenuInteraction) {
+  info("select click", { customId: inter.customId, values: inter.values, user: inter.user.id });
   if (inter.customId !== "region_select") return;
   const channel = await withChannel(inter, false);
   if (!channel) return;
@@ -370,6 +363,7 @@ async function handleRegionSelect(inter: StringSelectMenuInteraction) {
 }
 
 async function handleModal(inter: ModalSubmitInteraction) {
+  info("modal submit", { customId: inter.customId, user: inter.user.id });
   // Обработка модальных окон после подтверждения пользователем.
   await inter.deferReply({ flags: MessageFlags.Ephemeral });
   const channel = getUserTempChannel(inter);
@@ -451,11 +445,28 @@ export async function handleInteraction(interaction: Interaction) {
   // Точка входа: определяем тип взаимодействия и передаём в нужный обработчик.
   if (interaction.isChatInputCommand())
     switch (interaction.commandName) {
-      case "setup":
-        return handleSetup(interaction);
-      case "interface":
-        return handleInterface(interaction);
-    }
+      case "setup": return handleSetup(interaction);
+      case "interface": return handleInterface(interaction);
+      case "debug": {
+        const ch = getUserTempChannel(interaction);
+        if (!ch) return interaction.reply(ephemeral("Вы не в своём временном канале"));
+        const payload = {
+          channelId: ch.id,
+          name: ch.name,
+          inCreatedSet: createdChannels.has(ch.id),
+          owner: channelOwners.get(ch.id),
+          number: channelNumbers.get(ch.id),
+          baseName: channelNames.get(ch.id),
+          isPrivate: channelPrivates.get(ch.id),
+          rtcRegion: channelRtcRegion.get(ch.id),
+          userLimit: channelUserLimit.get(ch.id),
+          trusted: [...(trustedUsers.get(ch.id) ?? [])],
+        };
+        info("/debug", payload);
+        await interaction.reply(ephemeral("Смотри логи в консоли (и это сообщение)."));
+        break;
+      }
+  }
   if (interaction.isButton()) return handleButton(interaction);
   if (interaction.isStringSelectMenu()) return handleRegionSelect(interaction);
   if (interaction.isModalSubmit()) return handleModal(interaction);
