@@ -47,6 +47,14 @@ import {
   channelNames,
   availableNumbers,
 } from "../state";
+import {
+  persistRename,
+  persistPrivacy,
+  persistRtcRegion,
+  persistUserLimit,
+  addTrustedLocalAndDB,
+  removeTrustedLocalAndDB,
+} from "../voice";
 import { isManager, getUserTempChannel, formatChannelName } from "../voice";
 
 // Вспомогательная функция для отправки скрытых (ephemeral) сообщений.
@@ -227,20 +235,20 @@ async function handleButton(inter: ButtonInteraction) {
   // Обработка нажатий на кнопки из интерфейсного сообщения.
   switch (inter.customId) {
     case "toggle_privacy": {
-      // Переключение приватности канала.
       const channel = await withChannel(inter);
       if (!channel) break;
+
       const everyone = inter.guild!.roles.everyone;
       const overwrite = channel.permissionOverwrites.resolve(everyone.id);
       const isPrivate = overwrite?.deny.has(PermissionFlagsBits.Connect);
+
       await channel.permissionOverwrites.edit(everyone, {
         Connect: isPrivate ? null : false,
       });
-      await channel.setName(formatChannelName(channel.id, !isPrivate));
+
+      await persistPrivacy(channel, !isPrivate); // <-- сохраняем в БД + обновляем имя
       await inter.reply(
-        ephemeral(
-          isPrivate ? "Канал теперь публичный" : "Канал теперь приватный"
-        )
+        ephemeral(isPrivate ? "Канал теперь публичный" : "Канал теперь приватный")
       );
       break;
     }
@@ -338,17 +346,11 @@ async function handleButton(inter: ButtonInteraction) {
       break;
     }
     case "delete_channel": {
-      // Удаление текущего канала и очистка состояния.
       const channel = await withChannel(inter);
       if (!channel) break;
-      await channel.delete();
-      createdChannels.delete(channel.id);
-      channelOwners.delete(channel.id);
-      trustedUsers.delete(channel.id);
-      const number = channelNumbers.get(channel.id);
-      if (number !== undefined) availableNumbers.add(number);
-      channelNumbers.delete(channel.id);
-      channelNames.delete(channel.id);
+      try { await channel.delete(); } catch {}
+      // локальное состояние + БД очистятся в voiceStateUpdate, но на всякий случай:
+      import("../db").then(({ deleteChannel }) => deleteChannel(channel.id));
       await inter.reply(ephemeral("Канал удалён"));
       break;
     }
@@ -356,20 +358,14 @@ async function handleButton(inter: ButtonInteraction) {
 }
 
 async function handleRegionSelect(inter: StringSelectMenuInteraction) {
-  // Изменение региона RTC после выбора в меню.
   if (inter.customId !== "region_select") return;
   const channel = await withChannel(inter, false);
   if (!channel) return;
-  const value = inter.values[0];
 
-  // Проверяем, что выбранный регион допустим.
-  if (value !== "auto" && !ALLOWED_RTC_REGIONS.includes(value as any)) {
-    await inter.reply(ephemeral("Регион ${value} недоступен. Доступные регионы: " + ALLOWED_RTC_REGIONS.join(", ")));
-    return;
-  }
-  
-  // Если выбран "auto", устанавливаем регион в null (автоопределение).
+  const value = inter.values[0];
   await channel.setRTCRegion(value === "auto" ? null : value);
+  persistRtcRegion(channel.id, value === "auto" ? null : value); // <-- в БД
+
   await inter.reply(ephemeral(`Регион канала установлен: ${value}`));
 }
 
@@ -383,27 +379,18 @@ async function handleModal(inter: ModalSubmitInteraction) {
     });
   switch (inter.customId) {
     case "rename_modal": {
-      // Применяем новое имя канала.
       const name = inter.fields.getTextInputValue("name_input");
-      channelNames.set(channel.id, name);
-      const everyone = inter.guild!.roles.everyone;
-      const overwrite = channel.permissionOverwrites.resolve(everyone.id);
-      const isPrivate = !!overwrite?.deny.has(PermissionFlagsBits.Connect);
-      await channel.setName(formatChannelName(channel.id, isPrivate));
-      await inter.editReply({
-        content: `Название канала изменено на ${name}`,
-      });
+      await persistRename(channel, name); // <-- сохраняем в БД + меняем имя
+      await inter.editReply({ content: `Название канала изменено на ${name}` });
       break;
     }
     case "limit_modal": {
-      // Устанавливаем лимит пользователей для канала.
-      const limit = parseInt(
-        inter.fields.getTextInputValue("limit_input"),
-        10
-      );
+      const limit = parseInt(inter.fields.getTextInputValue("limit_input"), 10);
       if (isNaN(limit) || limit < 0 || limit > 99)
         return inter.editReply({ content: "Неверное значение" });
+
       await channel.setUserLimit(limit);
+      persistUserLimit(channel.id, limit); // <-- в БД
       await inter.editReply({ content: `Лимит установлен: ${limit}` });
       break;
     }
@@ -421,6 +408,7 @@ async function handleUserSelect(inter: UserSelectMenuInteraction) {
   switch (inter.customId) {
     case "invite_select":
       await channel.permissionOverwrites.edit(member, { Connect: true });
+      addTrustedLocalAndDB(channel.id, member.id); // логично отмечать как trusted
       await inter.reply(ephemeral(`Пользователь приглашён: ${member}`));
       break;
     case "kick_select":
@@ -431,28 +419,28 @@ async function handleUserSelect(inter: UserSelectMenuInteraction) {
       break;
     case "block_select":
       await channel.permissionOverwrites.edit(member, { Connect: false });
+      removeTrustedLocalAndDB(channel.id, member.id);
       await inter.reply(ephemeral(`Пользователь заблокирован: ${member}`));
       break;
     case "unblock_select":
       await channel.permissionOverwrites.delete(member);
+      // не добавляем в trusted автоматически
       await inter.reply(ephemeral(`Пользователь разблокирован: ${member}`));
       break;
     case "trusted_add_select": {
-      const set = trustedUsers.get(channel.id) ?? new Set();
-      set.add(id);
-      trustedUsers.set(channel.id, set);
+      addTrustedLocalAndDB(channel.id, id);
       await inter.reply(ephemeral("Доверенный пользователь добавлен"));
       break;
     }
     case "trusted_remove_select":
-      trustedUsers.get(channel.id)?.delete(id);
+      removeTrustedLocalAndDB(channel.id, id);
       await inter.reply(ephemeral("Доверенный пользователь удалён"));
       break;
     case "transfer_select": {
       channelOwners.set(channel.id, id);
-      const set = trustedUsers.get(channel.id) ?? new Set();
-      set.add(id);
-      trustedUsers.set(channel.id, set);
+      // в БД — смена владельца
+      import("../db").then(({ updateOwner }) => updateOwner(channel.id, id));
+      addTrustedLocalAndDB(channel.id, id);
       await inter.reply(ephemeral("Лидерство передано"));
       break;
     }

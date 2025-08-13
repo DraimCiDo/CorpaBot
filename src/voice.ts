@@ -1,5 +1,3 @@
-// Логика работы с голосовыми каналами: создание, удаление,
-// переименование и проверка прав пользователей.
 import {
   CategoryChannel,
   ChannelType,
@@ -13,6 +11,9 @@ import {
   channelNumbers,
   channelNames,
   availableNumbers,
+  channelPrivates,
+  channelRtcRegion,
+  channelUserLimit,
 } from "./state";
 import {
   CREATE_CHANNEL_NAME,
@@ -21,10 +22,44 @@ import {
   LOCK_CLOSED,
 } from "./constants";
 
-// Счётчик, чтобы выдавать новым каналам уникальные номера.
-let channelCounter = 0;
+import {
+  insertChannel,
+  deleteChannel as dbDeleteChannel,
+  updateOwner,
+  updateName,
+  updatePrivate,
+  updateRtcRegion,
+  updateUserLimit,
+  addTrusted as dbAddTrusted,
+  removeTrusted as dbRemoveTrusted,
+  listTrusted,
+  getChannelCounter,
+  setChannelCounter,
+  popFreeNumber,
+  pushFreeNumber,
+} from "./db";
 
-// Формирует отображаемое имя канала с учётом приватности и номера.
+// Счётчик номеров: теперь берём/кладём в БД
+let channelCounter = 0;
+export function setCounterFromDB() {
+  channelCounter = getChannelCounter();
+}
+function allocateNumber(): number {
+  const freed = popFreeNumber();
+  if (freed !== null) {
+    availableNumbers.delete(freed);
+    return freed;
+  }
+  channelCounter = Math.max(channelCounter, getChannelCounter());
+  channelCounter += 1;
+  setChannelCounter(channelCounter);
+  return channelCounter;
+}
+function releaseNumber(n: number) {
+  pushFreeNumber(n);
+  availableNumbers.add(n);
+}
+
 export function formatChannelName(
   channelId: string,
   isPrivate: boolean
@@ -36,8 +71,6 @@ export function formatChannelName(
   return `[${lock}] ${base}${suffix}`;
 }
 
-// Проверяет, имеет ли пользователь право управлять каналом
-// (является владельцем или доверенным).
 export function isManager(channelId: string, userId: string): boolean {
   return (
     channelOwners.get(channelId) === userId ||
@@ -45,7 +78,6 @@ export function isManager(channelId: string, userId: string): boolean {
   );
 }
 
-// Возвращает временный канал пользователя, если он в нём находится.
 export function getUserTempChannel(
   interaction: Interaction
 ): VoiceChannel | null {
@@ -57,61 +89,129 @@ export function getUserTempChannel(
   return null;
 }
 
-// Основной обработчик изменений голосовых состояний пользователей.
-// Создаёт новые каналы при входе в "Создать канал" и удаляет пустые.
-export async function handleVoiceStateUpdate(oldState: any, newState: any) {
-  // Пользователь зашёл в канал для создания временной комнаты.
-  if (newState.channel && newState.channel.name === CREATE_CHANNEL_NAME) {
-    const category = newState.channel.parent as CategoryChannel | null;
-    // Берём свободный номер или увеличиваем счётчик.
-    const number =
-      availableNumbers.size > 0
-        ? Math.min(...availableNumbers)
-        : ++channelCounter;
-    if (availableNumbers.size > 0) {
-      availableNumbers.delete(number);
+// Создание нового временного канала (вызов из voiceStateUpdate)
+async function createTempChannel(newState: any): Promise<VoiceChannel> {
+  const category = newState.channel.parent as CategoryChannel | null;
+  const number = allocateNumber();
+
+  const newChannel = (await newState.guild.channels.create({
+    name: `[${LOCK_OPEN}] ${TEMP_CHANNEL_PREFIX}[#${number}]`,
+    type: ChannelType.GuildVoice,
+    parent: category ?? undefined,
+  })) as VoiceChannel;
+
+  // Память
+  createdChannels.add(newChannel.id);
+  channelOwners.set(newChannel.id, newState.id);
+  const set = new Set<string>([newState.id]);
+  trustedUsers.set(newChannel.id, set);
+  channelNumbers.set(newChannel.id, number);
+  channelNames.set(newChannel.id, TEMP_CHANNEL_PREFIX);
+  channelPrivates.set(newChannel.id, false);
+  channelRtcRegion.set(newChannel.id, null);
+  channelUserLimit.set(newChannel.id, null);
+
+  // БД
+  insertChannel({
+    channel_id: newChannel.id,
+    owner_id: newState.id,
+    number,
+    name: TEMP_CHANNEL_PREFIX,
+    is_private: 0,
+    rtc_region: null,
+    user_limit: null,
+    parent_id: category?.id ?? null,
+  });
+  dbAddTrusted(newChannel.id, newState.id);
+
+  return newChannel;
+}
+
+async function purgeOrReassignOnLeave(oldState: any) {
+  const vc: VoiceChannel = oldState.channel;
+  if (vc.members.size === 0) {
+    // удаляем канал
+    createdChannels.delete(vc.id);
+    const number = channelNumbers.get(vc.id);
+    if (number !== undefined) releaseNumber(number);
+
+    channelOwners.delete(vc.id);
+    trustedUsers.delete(vc.id);
+    channelNumbers.delete(vc.id);
+    channelNames.delete(vc.id);
+    channelPrivates.delete(vc.id);
+    channelRtcRegion.delete(vc.id);
+    channelUserLimit.delete(vc.id);
+
+    // БД
+    dbDeleteChannel(vc.id);
+
+    try {
+      await vc.delete();
+    } catch { /* already removed */ }
+  } else {
+    // если вышел владелец — назначаем первого
+    const ownerId = channelOwners.get(vc.id);
+    if (ownerId === oldState.id) {
+      const [first] = vc.members.values();
+      if (first) {
+        channelOwners.set(vc.id, first.id);
+        updateOwner(vc.id, first.id);
+      }
     }
-    // Создаём новый голосовой канал в той же категории.
-    const newChannel = (await newState.guild.channels.create({
-      name: `[${LOCK_OPEN}] ${TEMP_CHANNEL_PREFIX}[#${number}]`,
-      type: ChannelType.GuildVoice,
-      parent: category ?? undefined,
-    })) as VoiceChannel;
-    createdChannels.add(newChannel.id);
-    channelOwners.set(newChannel.id, newState.id);
-    trustedUsers.set(newChannel.id, new Set([newState.id]));
-    channelNumbers.set(newChannel.id, number);
-    channelNames.set(newChannel.id, TEMP_CHANNEL_PREFIX);
-    await newState.setChannel(newChannel); // перенаправляем пользователя
+  }
+}
+
+export async function handleVoiceStateUpdate(oldState: any, newState: any) {
+  // Зашел в "Создать канал"
+  if (newState.channel && newState.channel.name === CREATE_CHANNEL_NAME) {
+    const ch = await createTempChannel(newState);
+    await newState.setChannel(ch);
   }
 
-  // Обработка выхода пользователя из временного канала.
+  // Покидает наш временный канал
   if (oldState.channel && createdChannels.has(oldState.channel.id)) {
-    if (oldState.channel.members.size === 0) {
-      // Если канал опустел — удаляем и освобождаем ресурсы.
-      createdChannels.delete(oldState.channel.id);
-      channelOwners.delete(oldState.channel.id);
-      trustedUsers.delete(oldState.channel.id);
-      const number = channelNumbers.get(oldState.channel.id);
-      if (number !== undefined) {
-        availableNumbers.add(number);
-      }
-      channelNumbers.delete(oldState.channel.id);
-      channelNames.delete(oldState.channel.id);
-      try {
-        await oldState.channel.delete();
-      } catch {
-        // канал мог быть удалён вручную
-      }
-    } else {
-      // Если владелец вышел, назначаем нового владельца (первого в списке).
-      const ownerId = channelOwners.get(oldState.channel.id);
-      if (ownerId === oldState.id) {
-        const [first] = oldState.channel.members.values();
-        if (first) {
-          channelOwners.set(oldState.channel.id, first.id);
-        }
-      }
-    }
+    await purgeOrReassignOnLeave(oldState);
   }
+}
+
+// ==== вспомогательные методы для interactions.ts =====
+
+export async function persistRename(channel: VoiceChannel, newBaseName: string) {
+  channelNames.set(channel.id, newBaseName);
+  updateName(channel.id, newBaseName);
+
+  const everyone = channel.guild.roles.everyone;
+  const overwrite = channel.permissionOverwrites.resolve(everyone.id);
+  const isPrivate = !!overwrite?.deny.has("Connect" as any);
+  channelPrivates.set(channel.id, isPrivate);
+
+  await channel.setName(formatChannelName(channel.id, isPrivate));
+}
+
+export async function persistPrivacy(channel: VoiceChannel, isPrivate: boolean) {
+  channelPrivates.set(channel.id, isPrivate);
+  updatePrivate(channel.id, isPrivate);
+  await channel.setName(formatChannelName(channel.id, isPrivate));
+}
+
+export function persistRtcRegion(channelId: string, value: string | null) {
+  channelRtcRegion.set(channelId, value);
+  updateRtcRegion(channelId, value);
+}
+
+export function persistUserLimit(channelId: string, limit: number | null) {
+  channelUserLimit.set(channelId, limit);
+  updateUserLimit(channelId, limit);
+}
+
+export function addTrustedLocalAndDB(channelId: string, userId: string) {
+  const set = trustedUsers.get(channelId) ?? new Set<string>();
+  set.add(userId);
+  trustedUsers.set(channelId, set);
+  dbAddTrusted(channelId, userId);
+}
+export function removeTrustedLocalAndDB(channelId: string, userId: string) {
+  trustedUsers.get(channelId)?.delete(userId);
+  dbRemoveTrusted(channelId, userId);
 }
