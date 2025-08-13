@@ -20,6 +20,7 @@ import {
   UserSelectMenuBuilder,
   UserSelectMenuInteraction,
   CategoryChannel,
+  MessageFlags,
 } from "discord.js";
 import {
   CREATE_CHANNEL_NAME,
@@ -51,7 +52,7 @@ import { isManager, getUserTempChannel, formatChannelName } from "../voice";
 // Вспомогательная функция для отправки скрытых (ephemeral) сообщений.
 const ephemeral = (content: string) => ({
   content,
-  ephemeral: true,
+  flags: MessageFlags.Ephemeral as number,
 });
 
 // Отправляет в текстовый канал сообщение с кнопками управления.
@@ -102,6 +103,25 @@ async function sendInterfaceMessage(channel: TextChannel) {
   await channel.send({ embeds: [embed], components: rows });
 }
 
+// Список регионов, доступных для голосовых каналов RTC.
+// Используется для выбора региона при создании или изменении канала.
+const ALLOWED_RTC_REGIONS = [
+  "brazil",
+  "hongkong",
+  "india",
+  "japan",
+  "rotterdam",
+  "singapore",
+  "south-korea",
+  "southafrica",
+  "sydney",
+  "us-central",
+  "us-east",
+  "us-south",
+  "us-west",
+ ] as const;
+
+// Обработчики команд и взаимодействий.
 async function handleSetup(inter: ChatInputCommandInteraction) {
   // Проверяем, что команда вызвана на сервере.
   if (!inter.guild)
@@ -280,7 +300,7 @@ async function handleButton(inter: ButtonInteraction) {
       await inter.reply({
         content: "Выберите регион",
         components: [menu],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       break;
     }
@@ -313,7 +333,7 @@ async function handleButton(inter: ButtonInteraction) {
       await inter.reply({
         content: "Выберите пользователя",
         components: [menu],
-        ephemeral: true,
+        flags: MessageFlags.Ephemeral,
       });
       break;
     }
@@ -341,13 +361,21 @@ async function handleRegionSelect(inter: StringSelectMenuInteraction) {
   const channel = await withChannel(inter, false);
   if (!channel) return;
   const value = inter.values[0];
+
+  // Проверяем, что выбранный регион допустим.
+  if (value !== "auto" && !ALLOWED_RTC_REGIONS.includes(value as any)) {
+    await inter.reply(ephemeral("Регион ${value} недоступен. Доступные регионы: " + ALLOWED_RTC_REGIONS.join(", ")));
+    return;
+  }
+  
+  // Если выбран "auto", устанавливаем регион в null (автоопределение).
   await channel.setRTCRegion(value === "auto" ? null : value);
   await inter.reply(ephemeral(`Регион канала установлен: ${value}`));
 }
 
 async function handleModal(inter: ModalSubmitInteraction) {
   // Обработка модальных окон после подтверждения пользователем.
-  await inter.deferReply({ ephemeral: true });
+  await inter.deferReply({ flags: MessageFlags.Ephemeral });
   const channel = getUserTempChannel(inter);
   if (!channel)
     return inter.editReply({
