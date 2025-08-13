@@ -1,5 +1,5 @@
 import { client, login } from "./client";
-import { info, warn, error } from "./logger";
+import { info, error } from "./logger";
 import { registerCommands } from "./registerCommands";
 import { handleInteraction } from "./handlers/interactions";
 import { handleVoiceStateUpdate, setCounterFromDB } from "./voice";
@@ -63,23 +63,27 @@ client.once("ready", async () => {
   console.log("Bot ready");
 });
 
-client.on("interactionCreate", (i) => {
-  try {
-    info("interactionCreate", {
-      type: i.type,
-      isButton: i.isButton(),
-      isChatInput: i.isChatInputCommand(),
-      isStringSelect: i.isStringSelectMenu(),
-      isModal: i.isModalSubmit(),
-      user: `${i.user.tag} (${i.user.id})`,
-      guild: i.guild?.id,
-      channel: i.channelId,
-    });
-  } catch {}
-  handleInteraction(i).catch((e) => {
-    error("handleInteraction failed", { err: String(e) });
+client.removeAllListeners("interactionCreate");
+
+client.on("interactionCreate", async (i) => {
+  info("interactionCreate", {
+    type: i.type,
+    isButton: i.isButton(),
+    isChatInput: i.isChatInputCommand(),
+    isStringSelect: i.isStringSelectMenu(),
+    isModal: i.isModalSubmit(),
+    user: `${i.user.tag} (${i.user.id})`,
+    guild: i.guild?.id,
+    channel: i.channelId,
   });
+
+  try {
+    await handleInteraction(i);
+  } catch (e) {
+    error("handleInteraction failed", { err: String(e) });
+  }
 });
+console.log("interactionCreate listeners:", client.listenerCount("interactionCreate"));
 
 client.on("voiceStateUpdate", handleVoiceStateUpdate);
 
